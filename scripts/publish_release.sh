@@ -18,18 +18,23 @@ command -v "$PYTHON" >/dev/null 2>&1 || PYTHON=python3
 VERSION="${1:-$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d+ -f1)}"
 TAG="v$VERSION"
 DIST_DIR="${DIST_DIR:-/f/SimpleLedger-dist}"
-APK="$DIST_DIR/SimpleLedger-$VERSION-release.apk"
+APKS=()
+for candidate in \
+  "$DIST_DIR/SimpleLedger-$VERSION-release.apk" \
+  "$DIST_DIR/SimpleLedger-$VERSION-armeabi-v7a.apk"; do
+  [ -f "$candidate" ] && APKS+=("$candidate")
+done
 SRC="$DIST_DIR/SimpleLedger-$VERSION-source.zip"
 NOTES="docs/releases/v$VERSION.md"
 GH_REPO="${GH_REPO:-zxl99621/SimpleLedger}"
 GITEE_REPO="${GITEE_REPO:-zxl996/simple-ledger}"
 
-[ -f "$APK" ] || { echo "APK not found: $APK" >&2; exit 1; }
+[ ${#APKS[@]} -gt 0 ] || { echo "No APK found for $VERSION in $DIST_DIR" >&2; exit 1; }
 [ -f "$SRC" ] || { echo "Source zip not found: $SRC" >&2; exit 1; }
 [ -f "$NOTES" ] || { echo "Release notes not found: $NOTES" >&2; exit 1; }
 
 echo "Publishing SimpleLedger $VERSION ($TAG)"
-echo "  APK:    $APK"
+for apk in "${APKS[@]}"; do echo "  APK:    $apk"; done
 echo "  Source: $SRC"
 echo "  Notes:  $NOTES"
 
@@ -40,10 +45,10 @@ fi
 if gh auth status >/dev/null 2>&1; then
   if gh release view "$TAG" -R "$GH_REPO" >/dev/null 2>&1; then
     echo "GitHub release $TAG already exists; uploading assets..."
-    gh release upload "$TAG" "$APK" "$SRC" -R "$GH_REPO" --clobber
+    gh release upload "$TAG" "${APKS[@]}" "$SRC" -R "$GH_REPO" --clobber
   else
     echo "Creating GitHub release $TAG..."
-    gh release create "$TAG" "$APK" "$SRC" \
+    gh release create "$TAG" "${APKS[@]}" "$SRC" \
       -R "$GH_REPO" \
       --title "SimpleLedger $VERSION" \
       --notes-file "$NOTES"
@@ -78,7 +83,7 @@ fi
 [ -n "$existing" ] || { echo "Failed to create/find Gitee release" >&2; exit 1; }
 
 echo "Uploading assets to Gitee release id=$existing..."
-for file in "$APK" "$SRC"; do
+for file in "${APKS[@]}" "$SRC"; do
   curl -s -X POST "$api/$existing/attach_files" \
     -F "access_token=$TOKEN" \
     -F "file=@$file" >/dev/null
