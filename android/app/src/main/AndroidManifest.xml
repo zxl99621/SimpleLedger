@@ -1,43 +1,28 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Required for Supabase network requests -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <!-- AI 云端接口与本地模型下载 -->
     <uses-permission android:name="android.permission.INTERNET" />
 
-    <!-- Required for voice recording -->
-    <uses-permission android:name="android.permission.RECORD_AUDIO" />
-
-    <!-- Required for downloading APK files and saving images (API <= 29) -->
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
-        android:maxSdkVersion="29" />
-    <!-- Required for reading screenshots (Android 13+) -->
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-    <!-- Required for reading screenshots (Android 10-12) -->
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32" />
-    <!-- Required for installing APK files -->
-    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
-    <!-- Required for showing notifications -->
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <!-- Required for exact alarms on Android 12+ -->
-    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
-    <!-- Required for notifications to work while the app is in background -->
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <!-- Optional: vibration for notifications -->
-    <uses-permission android:name="android.permission.VIBRATE" />
-    <!-- Required for foreground service notifications -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <!-- Required for apps targeting Android 14+ -->
-    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
-    <!-- Required for requesting battery optimization exemption -->
-    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
-    <!-- Required for biometric authentication -->
+    <!-- 应用锁（生物识别）；设置页暂未暴露，但旧安装可能已开启 -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
-    
+
+    <!-- 极简版不使用录音、截图监听、提醒或应用内更新；剔除插件合并进来的权限。 -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" tools:node="remove" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" tools:node="remove" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" tools:node="remove" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" tools:node="remove" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" tools:node="remove" />
+    <uses-permission android:name="android.permission.VIBRATE" tools:node="remove" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" tools:node="remove" />
+
     <application
         android:label="${appName}"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher"
-        android:requestLegacyExternalStorage="true">
+        android:icon="@mipmap/ic_launcher">
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -97,29 +82,6 @@
             android:name="flutterEmbedding"
             android:value="2" />
         
-        <!-- 后台通知接收器 -->
-        <receiver android:name=".NotificationReceiver"
-            android:enabled="true"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
-                <action android:name="android.intent.action.PACKAGE_REPLACED" />
-                <data android:scheme="package" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="${applicationId}.NOTIFICATION_ALARM" />
-            </intent-filter>
-        </receiver>
-
-        <!-- 通知点击接收器 -->
-        <receiver android:name=".NotificationClickReceiver"
-            android:enabled="true"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="${applicationId}.NOTIFICATION_CLICK" />
-            </intent-filter>
-        </receiver>
 
         <!-- 桌面小组件 -->
         <receiver android:name="com.tntlikely.beecount.BeeCountWidgetProvider"

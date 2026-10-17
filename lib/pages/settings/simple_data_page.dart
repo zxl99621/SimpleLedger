@@ -23,6 +23,10 @@ class SimpleDataPage extends ConsumerStatefulWidget {
 
 class _SimpleDataPageState extends ConsumerState<SimpleDataPage> {
   final _backupService = SimpleBackupService();
+
+  /// 当前实现会把整个 zip 读入内存；超过该阈值直接提示，避免 OOM。
+  static const int _maxBackupBytes = 512 * 1024 * 1024;
+
   bool _busy = false;
   String _busyLabel = '';
 
@@ -53,6 +57,11 @@ class _SimpleDataPageState extends ConsumerState<SimpleDataPage> {
       await db.customStatement('PRAGMA wal_checkpoint(TRUNCATE)');
 
       final zip = await _backupService.createBackup();
+      if (await zip.length() > _maxBackupBytes) {
+        if (await zip.exists()) await zip.delete();
+        _showMessage('备份超过 512 MB，当前版本无法安全保存，请先清理部分图片附件');
+        return;
+      }
       final bytes = await zip.readAsBytes();
       final saved = await FilePicker.platform.saveFile(
         dialogTitle: '保存备份',
@@ -79,7 +88,12 @@ class _SimpleDataPageState extends ConsumerState<SimpleDataPage> {
     if (path == null) return;
 
     await _runBusy('正在校验备份…', () async {
-      final bytes = await File(path).readAsBytes();
+      final backupFile = File(path);
+      if (await backupFile.length() > _maxBackupBytes) {
+        _showMessage('备份文件超过 512 MB，当前版本无法安全读取，请先在电脑上解压处理');
+        return;
+      }
+      final bytes = await backupFile.readAsBytes();
       final extracted = await _backupService.extractAndValidate(bytes);
 
       if (!mounted) return;
@@ -122,7 +136,7 @@ class _SimpleDataPageState extends ConsumerState<SimpleDataPage> {
   Future<void> _clearAllBills() async {
     final confirmed = await _confirm(
       title: '清空全部账单？',
-      message: '所有账单、标签和图片都会被删除，此操作无法撤销。',
+      message: '所有账单、标签和账单图片都会被删除（分类图标会保留），此操作无法撤销。',
       confirmText: '清空',
       destructive: true,
     );
@@ -130,7 +144,17 @@ class _SimpleDataPageState extends ConsumerState<SimpleDataPage> {
 
     await _runBusy('正在清空…', () async {
       final db = ref.read(databaseProvider);
+      final categoryRows = await (db.select(db.categories)
+            ..where((c) => c.customIconPath.isNotNull()))
+          .get();
+      final referencedIcons = <String>{
+        for (final row in categoryRows)
+          if (row.customIconPath != null && row.customIconPath!.trim().isNotEmpty)
+            p.basename(row.customIconPath!),
+      };
+
       await db.transaction(() async {
+        await db.delete(db.transactionTagOverrides).go();
         await db.delete(db.transactionTags).go();
         await db.delete(db.transactionAttachments).go();
         await db.delete(db.transactions).go();
@@ -138,12 +162,10 @@ class _SimpleDataPageState extends ConsumerState<SimpleDataPage> {
       });
 
       final docs = await getApplicationDocumentsDirectory();
-      for (final name in SimpleBackupService.contentDirs) {
-        final dir = Directory(p.join(docs.path, name));
-        if (await dir.exists()) {
-          await dir.delete(recursive: true);
-        }
-      }
+      await _backupService.clearContentImages(
+        docs,
+        referencedCustomIconNames: referencedIcons,
+      );
 
       ref.read(statsRefreshProvider.notifier).state++;
       if (mounted) _showMessage('已清空全部账单');

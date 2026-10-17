@@ -72,7 +72,7 @@
 | Android SDK | API 36 |
 
 ```bash
-cd F:\SimpleLedger\BeeCount
+cd F:\SimpleLedger
 flutter pub get
 flutter build apk --debug --flavor dev --target-platform android-arm64
 # 产物：build\app\outputs\flutter-apk\app-dev-debug.apk
@@ -83,6 +83,22 @@ Release：
 ```bash
 flutter build apk --release --flavor prod --target-platform android-arm64
 ```
+
+### 发布签名
+
+Release 构建必须提供 `android/key.properties`（已被 gitignore）：
+
+```properties
+storeFile=D:/AndroidDevCache/simpleledger-keys/simpleledger-release.p12
+storePassword=***
+keyAlias=simpleledger
+keyPassword=***
+```
+
+- 密钥与密码存放在仓库外；至少备份两份（密码管理器 + 离线介质）。
+- 缺失 `key.properties` 时 release 构建会直接失败，不会生成临时密钥。
+- 证书 SHA-256：`0D:99:FE:E1:F0:BC:DF:93:E1:56:D0:2C:AD:32:4B:9B:81:CF:B3:D2:4F:09:84:E4:7D:0E:3D:50:D2:74:AC:C2`
+- 密钥丢失后，已安装用户将无法覆盖升级；泄露则可能被签出伪冒更新。
 
 > 本地 Pub / Gradle 缓存位于 D 盘（`D:\AndroidDevCache`），项目与 Android SDK/NDK 位于 F 盘。
 > Kotlin 增量编译已关闭（`kotlin.incremental=false`），因为缓存跨盘符会导致增量缓存报错。
@@ -97,6 +113,7 @@ flutter build apk --release --flavor prod --target-platform android-arm64
 - 云端模式仅在用户主动触发 AI/OCR 时发送当前功能必需的账单文本或图片
 - 本地模式不联网，账单数据不出设备
 - 备份文件保存在用户选择的位置（默认「下载」目录），由用户自行保管
+- 恢复前会校验 SQLite 完整性与 schema 版本；备份超过 512 MB 时当前版本会拒绝处理，避免内存耗尽
 
 ## 许可证与来源
 

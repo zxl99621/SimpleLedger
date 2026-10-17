@@ -13,6 +13,7 @@ import '../../theme.dart';
 import '../../utils/currencies.dart';
 import '../ai/simple_ai_page.dart';
 import '../transaction/transaction_editor_page.dart';
+import 'simple_stats_logic.dart';
 
 // 图表色板：取自校验过的分类序列（蓝、橙、青、黄、品红、绿），
 // 收入/支出是两序列，使用通过 CVD 校验的蓝/红组合。
@@ -305,37 +306,25 @@ class _SimpleStatsPageState extends ConsumerState<SimpleStatsPage> {
   }) {
     final categoryColors = isDark ? _categoryDark : _categoryLight;
     final otherColor = isDark ? _otherDark : _otherLight;
-
-    // 颜色跟随分类实体：按分类固定顺序分配色槽，不随排名变化。
-    final expenseCategories = data.allCategories
-        .where((category) => category.kind == 'expense')
-        .toList()
-      ..sort((a, b) {
-        final order = a.sortOrder.compareTo(b.sortOrder);
-        return order != 0 ? order : a.id.compareTo(b.id);
-      });
-    final colorById = <int, Color>{};
-    for (var i = 0; i < expenseCategories.length && i < categoryColors.length; i++) {
-      colorById[expenseCategories[i].id] = categoryColors[i];
-    }
-
-    final mapped = data.categories.where((item) => item.id == null || colorById.containsKey(item.id)).toList();
-    final top = mapped.take(5).toList();
-    final topTotal = top.fold<double>(0, (sum, item) => sum + item.total);
     final allTotal =
         data.categories.fold<double>(0, (sum, item) => sum + item.total);
-    final otherTotal = math.max(0.0, allTotal - topTotal);
 
-    final slices = <({String name, double total, Color color})>[
-      for (final item in top)
-        (
-          name: item.name,
-          total: item.total,
-          color: colorById[item.id] ?? otherColor,
-        ),
-      if (otherTotal > 0.005)
-        (name: '其他', total: otherTotal, color: otherColor),
-    ];
+    // Top5 按金额取，固定色槽顺序分配；分类排行沿用同一组颜色，
+    // 保证饼图和排行榜里的分类色一致。
+    final slices = buildExpensePieSlices(
+      categories: [
+        for (final item in data.categories)
+          (id: item.id, name: item.name, total: item.total),
+      ],
+      palette: categoryColors,
+      otherColor: otherColor,
+    );
+    final topColorById = <int, Color>{
+      for (var i = 0;
+          i < data.categories.length && i < expensePieTopCount;
+          i++)
+        if (data.categories[i].id != null) data.categories[i].id!: slices[i].color,
+    };
 
     return [
       _SummaryBlock(
@@ -416,7 +405,7 @@ class _SimpleStatsPageState extends ConsumerState<SimpleStatsPage> {
             percent: allTotal <= 0 ? 0 : item.total / allTotal,
             color: item.id == null
                 ? otherColor
-                : colorById[item.id] ?? otherColor,
+                : topColorById[item.id] ?? otherColor,
             symbol: symbol,
             ink: ink,
             muted: muted,

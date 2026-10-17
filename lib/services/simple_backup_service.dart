@@ -5,6 +5,9 @@ import 'package:archive/archive_io.dart';
 import 'package:intl/intl.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:sqlite3/sqlite3.dart';
+
+import '../data/schema_version.dart';
 
 /// 完整备份 / 恢复。
 ///
@@ -12,6 +15,9 @@ import 'package:path_provider/path_provider.dart';
 /// 恢复时只接受白名单条目，拒绝绝对路径与 `..` 路径穿越。
 class SimpleBackupService {
   static const String dbFileName = 'beecount.sqlite';
+
+  /// 恢复时拒绝来自更新版本的备份，避免旧 App 打开新 schema 后直接崩溃。
+  static const int supportedSchemaVersion = kSimpleLedgerSchemaVersion;
   static const List<String> contentDirs = [
     'attachments',
     'attachment_thumbs',
@@ -101,36 +107,166 @@ class SimpleBackupService {
       throw const FormatException('数据库文件已损坏');
     }
 
+    try {
+      _validateDatabase(db);
+    } catch (error) {
+      await temp.delete(recursive: true);
+      if (error is FormatException) rethrow;
+      throw FormatException('数据库校验失败：$error');
+    }
+
     return temp.path;
+  }
+
+  static void _validateDatabase(File dbFile) {
+    final Database db;
+    try {
+      db = sqlite3.open(dbFile.path, mode: OpenMode.readOnly);
+    } catch (error) {
+      throw FormatException('数据库无法打开：$error');
+    }
+    try {
+      final integrity = db.select('PRAGMA integrity_check');
+      final result = integrity.isEmpty
+          ? ''
+          : '${integrity.first.values.first}'.toLowerCase();
+      if (result != 'ok') {
+        throw const FormatException('数据库完整性校验失败');
+      }
+
+      final versionRows = db.select('PRAGMA user_version');
+      final version = versionRows.isEmpty
+          ? 0
+          : (versionRows.first.values.first as num?)?.toInt() ?? 0;
+      if (version > supportedSchemaVersion) {
+        throw FormatException(
+          '备份来自更新版本的 App（数据库版本 $version），请先升级 App 再恢复',
+        );
+      }
+    } finally {
+      db.close();
+    }
+  }
+
+  /// 清空账单相关的图片目录。
+  ///
+  /// 账单附件与缩略图整体删除；`custom_icons` 只删除没有被分类引用的文件，
+  /// 避免「清空账单」把用户仍在使用的自定义分类图标一起删掉。
+  Future<void> clearContentImages(
+    Directory docs, {
+    required Set<String> referencedCustomIconNames,
+  }) async {
+    for (final name in ['attachments', 'attachment_thumbs']) {
+      final dir = Directory(p.join(docs.path, name));
+      if (await dir.exists()) {
+        await dir.delete(recursive: true);
+      }
+    }
+
+    final icons = Directory(p.join(docs.path, 'custom_icons'));
+    if (!await icons.exists()) return;
+
+    await for (final entity in icons.list(recursive: true, followLinks: false)) {
+      if (entity is! File) continue;
+      if (referencedCustomIconNames.contains(p.basename(entity.path))) continue;
+      try {
+        await entity.delete();
+      } catch (_) {
+        // 单个文件删除失败不阻断整体清理。
+      }
+    }
+
+    // 清掉空的子目录；目录本身还有被引用的图标就保留。
+    await for (final entity in icons.list(recursive: false)) {
+      if (entity is Directory && await entity.list().isEmpty) {
+        await entity.delete();
+      }
+    }
+    if (await icons.list(recursive: false).isEmpty) {
+      await icons.delete(recursive: true);
+    }
   }
 
   /// 用已解压的备份覆盖 App 数据目录。
   ///
-  /// 调用前必须先关闭数据库连接。
-  Future<void> applyRestore(String extractedDir) async {
-    final docs = await getApplicationDocumentsDirectory();
+  /// 调用前必须先关闭数据库连接。现有数据先整体移入回滚目录，复制失败时
+  /// 原样移回，避免“删完旧库、复制新库失败”导致数据全部丢失。
+  Future<void> applyRestore(
+    String extractedDir, {
+    Directory? documentsDir,
+  }) async {
+    final docs = documentsDir ?? await getApplicationDocumentsDirectory();
     final source = Directory(extractedDir);
-
-    for (final suffix in ['', '-wal', '-shm']) {
-      final file = File(p.join(docs.path, '$dbFileName$suffix'));
-      if (await file.exists()) await file.delete();
-    }
-
     final restoredDb = File(p.join(source.path, dbFileName));
-    await restoredDb.copy(p.join(docs.path, dbFileName));
-
-    for (final name in contentDirs) {
-      final target = Directory(p.join(docs.path, name));
-      if (await target.exists()) {
-        await target.delete(recursive: true);
-      }
-      final backupDir = Directory(p.join(source.path, name));
-      if (await backupDir.exists()) {
-        await _copyDirectory(backupDir, target);
-      }
+    if (!await restoredDb.exists()) {
+      throw const FileSystemException('解压目录中缺少数据库文件');
     }
 
-    await source.delete(recursive: true);
+    final rollback = Directory(
+      p.join(docs.path, '.restore_rollback_${DateTime.now().microsecondsSinceEpoch}'),
+    );
+    await rollback.create(recursive: true);
+    final moved = <String>[];
+
+    try {
+      for (final suffix in ['', '-wal', '-shm']) {
+        final name = '$dbFileName$suffix';
+        final file = File(p.join(docs.path, name));
+        if (await file.exists()) {
+          await file.rename(p.join(rollback.path, name));
+          moved.add(name);
+        }
+      }
+
+      for (final name in contentDirs) {
+        final dir = Directory(p.join(docs.path, name));
+        if (await dir.exists()) {
+          await dir.rename(p.join(rollback.path, name));
+          moved.add(name);
+        }
+      }
+
+      await restoredDb.copy(p.join(docs.path, dbFileName));
+
+      for (final name in contentDirs) {
+        final backupDir = Directory(p.join(source.path, name));
+        if (await backupDir.exists()) {
+          await _copyDirectory(backupDir, Directory(p.join(docs.path, name)));
+        }
+      }
+
+      await rollback.delete(recursive: true);
+    } catch (_) {
+      // 清理可能已部分写入的新数据，再把原数据移回原位。
+      for (final suffix in ['', '-wal', '-shm']) {
+        final file = File(p.join(docs.path, '$dbFileName$suffix'));
+        if (await file.exists()) await file.delete();
+      }
+      for (final name in contentDirs) {
+        final dir = Directory(p.join(docs.path, name));
+        if (await dir.exists()) await dir.delete(recursive: true);
+      }
+
+      for (final name in moved) {
+        final from = p.join(rollback.path, name);
+        final to = p.join(docs.path, name);
+        final type = FileSystemEntity.typeSync(from);
+        if (type == FileSystemEntityType.directory) {
+          await Directory(from).rename(to);
+        } else if (type == FileSystemEntityType.file) {
+          await File(from).rename(to);
+        }
+      }
+
+      if (await rollback.exists()) await rollback.delete(recursive: true);
+      rethrow;
+    }
+
+    try {
+      await source.delete(recursive: true);
+    } catch (_) {
+      // 临时解压目录清理失败不影响恢复结果。
+    }
   }
 
   static Future<void> _copyDirectory(Directory source, Directory target) async {

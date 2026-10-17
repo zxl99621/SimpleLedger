@@ -16,6 +16,11 @@ class AiException implements Exception {
   String toString() => message;
 }
 
+/// 用户主动停止当前生成（不是失败）。
+class AiCancelled implements Exception {
+  const AiCancelled();
+}
+
 /// 文字类 AI 的统一推理接口：本地模型与云端 API 都实现它。
 abstract class AiEngine {
   Stream<String> streamChat(
@@ -23,6 +28,9 @@ abstract class AiEngine {
     double temperature = 0.7,
     int maxTokens = 512,
   });
+
+  /// 停止当前生成。默认实现为空；云端引擎会真正关闭 HTTP 连接。
+  void cancel() {}
 
   Future<String> complete(
     List<AiMessage> messages, {

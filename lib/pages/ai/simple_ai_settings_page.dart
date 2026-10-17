@@ -34,6 +34,7 @@ class _SimpleAiSettingsPageState extends ConsumerState<SimpleAiSettingsPage> {
   int _total = -1;
   bool _testing = false;
   String? _gpuInfo;
+  bool _detectingGpu = false;
 
   @override
   void initState() {
@@ -165,19 +166,26 @@ class _SimpleAiSettingsPageState extends ConsumerState<SimpleAiSettingsPage> {
   }
 
   Future<void> _detectGpu() async {
-    setState(() => _gpuInfo = '正在检测…');
+    if (_detectingGpu) return;
+    setState(() {
+      _detectingGpu = true;
+      _gpuInfo = '正在检测…';
+    });
     final controller = LlamaController();
     try {
       final gpu = await controller.detectGpu();
+      if (!mounted) return;
       setState(() {
         _gpuInfo = gpu.vulkanSupported
             ? '${gpu.gpuName} · Vulkan 可用 · 推荐 ${gpu.recommendedGpuLayers} 层 GPU 卸载'
             : '未检测到可用 Vulkan，使用 CPU 推理';
       });
     } catch (error) {
+      if (!mounted) return;
       setState(() => _gpuInfo = 'GPU 检测失败：$error');
     } finally {
       await controller.dispose();
+      if (mounted) setState(() => _detectingGpu = false);
     }
   }
 
@@ -338,7 +346,7 @@ class _SimpleAiSettingsPageState extends ConsumerState<SimpleAiSettingsPage> {
               children: [
                 Expanded(
                   child: OutlinedButton(
-                    onPressed: _detectGpu,
+                    onPressed: _detectingGpu ? null : _detectGpu,
                     child: const Text('检测设备 GPU'),
                   ),
                 ),

@@ -10,11 +10,23 @@ class CloudAiEngine extends AiEngine {
     required this.baseUrl,
     required this.apiKey,
     required this.model,
-  });
+    http.Client Function()? clientFactory,
+  }) : _clientFactory = clientFactory ?? (() => http.Client());
 
   final String baseUrl;
   final String apiKey;
   final String model;
+  final http.Client Function() _clientFactory;
+
+  http.Client? _activeClient;
+  bool _cancelled = false;
+
+  @override
+  void cancel() {
+    _cancelled = true;
+    _activeClient?.close();
+    _activeClient = null;
+  }
 
   String get _normalizedBase {
     var base = baseUrl.trim();
@@ -37,7 +49,9 @@ class CloudAiEngine extends AiEngine {
     int maxTokens = 512,
   }) async* {
     _assertConfigured();
-    final client = http.Client();
+    _cancelled = false;
+    final client = _clientFactory();
+    _activeClient = client;
     try {
       final request = http.Request(
         'POST',
@@ -62,6 +76,7 @@ class CloudAiEngine extends AiEngine {
         client.close();
         throw const AiException('云端请求超时，请检查网络或接口地址');
       });
+      if (_cancelled) throw const AiCancelled();
       if (response.statusCode < 200 || response.statusCode >= 300) {
         final body = await response.stream.bytesToString();
         throw AiException(
@@ -77,6 +92,7 @@ class CloudAiEngine extends AiEngine {
         // 部分兼容服务忽略 stream=true，直接返回完整 JSON。
         final buffer = StringBuffer();
         await for (final line in lineStream) {
+          if (_cancelled) throw const AiCancelled();
           buffer.write(line);
         }
         final decoded = jsonDecode(buffer.toString());
@@ -86,6 +102,7 @@ class CloudAiEngine extends AiEngine {
       }
 
       await for (final line in lineStream) {
+        if (_cancelled) throw const AiCancelled();
         final trimmed = line.trim();
         if (!trimmed.startsWith('data:')) continue;
         final data = trimmed.substring(5).trim();
@@ -111,7 +128,11 @@ class CloudAiEngine extends AiEngine {
           // 忽略单条无法解析的 SSE 行，继续读取后续 token。
         }
       }
+    } catch (error) {
+      if (_cancelled) throw const AiCancelled();
+      rethrow;
     } finally {
+      if (identical(_activeClient, client)) _activeClient = null;
       client.close();
     }
   }
@@ -125,7 +146,7 @@ class CloudAiEngine extends AiEngine {
         '请用简短的中文纯文本输出，不要编造图片中不存在的信息。',
   }) async {
     _assertConfigured();
-    final client = http.Client();
+    final client = _clientFactory();
     try {
       final request = http.Request(
         'POST',

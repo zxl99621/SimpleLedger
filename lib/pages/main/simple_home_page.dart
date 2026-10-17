@@ -8,6 +8,7 @@ import '../../providers/simple_settings_providers.dart';
 import '../../theme.dart';
 import '../../utils/currencies.dart';
 import '../transaction/transaction_editor_page.dart';
+import 'simple_home_logic.dart';
 
 /// 首页最近交易流（SimpleLedger 独立于原版首页的数据入口）
 final simpleRecentTransactionsProvider =
@@ -38,14 +39,17 @@ class SimpleHomePage extends ConsumerWidget {
     final brick = isDark ? const Color(0xFFE0786B) : BeeTheme.brick;
 
     final ledgerId = ref.watch(currentLedgerIdProvider);
+    final startDay = ref.watch(currentMonthStartDayProvider);
     final showTotalAsset = ref.watch(showTotalAssetProvider);
     final currencySymbol = getCurrencySymbol(ref.watch(baseCurrencyProvider));
 
     final now = DateTime.now();
-    final month = DateTime(now.year, now.month, 1);
-    final totalsAsync = ref.watch(
-      monthlyTotalsProvider((ledgerId: ledgerId, month: month)),
+    final monthParams = homeMonthlyTotalsParams(
+      ledgerId: ledgerId,
+      now: now,
+      startDay: startDay,
     );
+    final totalsAsync = ref.watch(monthlyTotalsProvider(monthParams));
     final balanceAsync = ref.watch(currentBalanceProvider(ledgerId));
     final recentAsync = ref.watch(simpleRecentTransactionsProvider);
     final categoriesAsync = ref.watch(categoriesProvider);

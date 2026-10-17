@@ -10,6 +10,8 @@ import 'package:drift/native.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 
+import 'schema_version.dart';
+
 part 'db.g.dart';
 
 // --- Tables ---
@@ -511,7 +513,8 @@ class BeeDatabase extends _$BeeDatabase {
   BeeDatabase.forTesting(QueryExecutor executor) : super(executor);
 
   @override
-  int get schemaVersion => 33; // v33: Agent 本地记忆、摘要与审计表
+  int get schemaVersion =>
+      kSimpleLedgerSchemaVersion; // v33: Agent 本地记忆、摘要与审计表
 
   @override
   MigrationStrategy get migration => MigrationStrategy(

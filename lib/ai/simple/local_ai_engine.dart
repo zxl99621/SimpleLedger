@@ -99,6 +99,11 @@ class LocalAiEngine extends AiEngine {
   final String modelPath;
 
   @override
+  void cancel() {
+    LocalAiManager.instance.stop();
+  }
+
+  @override
   Stream<String> streamChat(
     List<AiMessage> messages, {
     double temperature = 0.7,

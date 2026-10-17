@@ -6,7 +6,6 @@ import '../../ai/simple/ai_engine.dart';
 import '../../ai/simple/ai_providers.dart';
 import '../../ai/simple/ai_service.dart';
 import '../../ai/simple/ai_settings.dart';
-import '../../ai/simple/local_ai_engine.dart';
 import '../../theme.dart';
 import '../main/simple_stats_page.dart';
 import 'simple_ai_settings_page.dart';
@@ -31,6 +30,9 @@ class _SimpleAiPageState extends ConsumerState<SimpleAiPage> {
   final List<_ChatItem> _messages = [];
   bool _busy = false;
   bool _guideShown = false;
+
+  /// 每次请求的序号；用户点“停止”或发起新请求后，旧请求的结果不再写回界面。
+  int _requestSerial = 0;
 
   void _handlePendingFeature() {
     final pending = ref.read(aiPendingFeatureProvider);
@@ -103,21 +105,31 @@ class _SimpleAiPageState extends ConsumerState<SimpleAiPage> {
     );
   }
 
-  Future<void> _run(String label, Future<String> Function() task) async {
+  Future<void> _run(
+    String label,
+    Future<String> Function(bool Function() isActive) task,
+  ) async {
     if (_busy) return;
+    final serial = ++_requestSerial;
     setState(() => _busy = true);
     final item = _ChatItem(fromUser: false, text: '正在思考…');
     _messages.add(item);
     _scrollToBottom();
     try {
-      final result = await task();
-      if (!mounted) return;
+      final result = await task(() => mounted && serial == _requestSerial);
+      if (!mounted || serial != _requestSerial) return;
       setState(() => item.text = result.trim().isEmpty ? '（AI 没有返回内容）' : result.trim());
     } catch (error) {
-      if (!mounted) return;
-      setState(() => item.text = error is AiException ? error.message : '出错了：$error');
+      if (!mounted || serial != _requestSerial) return;
+      setState(() => item.text = error is AiCancelled
+          ? '已停止'
+          : error is AiException
+              ? error.message
+              : '出错了：$error');
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted && serial == _requestSerial) {
+        setState(() => _busy = false);
+      }
       _scrollToBottom();
     }
   }
@@ -130,6 +142,7 @@ class _SimpleAiPageState extends ConsumerState<SimpleAiPage> {
       return;
     }
     _inputController.clear();
+    final serial = ++_requestSerial;
     setState(() {
       _messages.add(_ChatItem(fromUser: true, text: question));
       _messages.add(_ChatItem(fromUser: false, text: '正在思考…'));
@@ -140,16 +153,23 @@ class _SimpleAiPageState extends ConsumerState<SimpleAiPage> {
     setState(() => _busy = true);
     try {
       final snapshot = await _buildSnapshot(wideRange: true);
+      // 用户在统计快照加载期间点了“停止”：不要再发起网络请求。
+      if (!mounted || serial != _requestSerial) return;
       final answer = await ref.read(aiServiceProvider).answer(question, snapshot);
-      if (!mounted) return;
+      if (!mounted || serial != _requestSerial) return;
       setState(() => placeholder.text =
           answer.trim().isEmpty ? '（AI 没有返回内容）' : answer.trim());
     } catch (error) {
-      if (!mounted) return;
-      setState(() => placeholder.text =
-          error is AiException ? error.message : '出错了：$error');
+      if (!mounted || serial != _requestSerial) return;
+      setState(() => placeholder.text = error is AiCancelled
+          ? '已停止'
+          : error is AiException
+              ? error.message
+              : '出错了：$error');
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted && serial == _requestSerial) {
+        setState(() => _busy = false);
+      }
       _scrollToBottom();
     }
   }
@@ -163,15 +183,17 @@ class _SimpleAiPageState extends ConsumerState<SimpleAiPage> {
     switch (kind) {
       case 'summary':
         setState(() => _messages.add(_ChatItem(fromUser: true, text: '帮我总结本月消费')));
-        _run('summary', () async {
+        _run('summary', (isActive) async {
           final snapshot = await _buildSnapshot();
+          if (!isActive()) throw const AiCancelled();
           return ref.read(aiServiceProvider).monthlySummary(snapshot);
         });
         break;
       case 'insight':
         setState(() => _messages.add(_ChatItem(fromUser: true, text: '看看我的消费习惯')));
-        _run('insight', () async {
+        _run('insight', (isActive) async {
           final snapshot = await _buildSnapshot();
+          if (!isActive()) throw const AiCancelled();
           return ref.read(aiServiceProvider).spendingInsight(snapshot);
         });
         break;
@@ -201,7 +223,7 @@ class _SimpleAiPageState extends ConsumerState<SimpleAiPage> {
   Widget build(BuildContext context) {
     // Tab 页面在 IndexedStack 中始终构建，用 TickerMode 判断当前是否可见，
     // 避免首次引导在用户还没进入 AI 页时就弹出。
-    if (TickerMode.of(context)) {
+    if (TickerMode.valuesOf(context).enabled) {
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         if (!mounted) return;
         await _maybeShowGuide();
@@ -295,8 +317,15 @@ class _SimpleAiPageState extends ConsumerState<SimpleAiPage> {
               busy: _busy,
               onSend: _sendQuestion,
               onStop: () {
-                LocalAiManager.instance.stop();
-                setState(() => _busy = false);
+                _requestSerial++;
+                ref.read(aiEngineProvider).cancel();
+                setState(() {
+                  _busy = false;
+                  if (_messages.isNotEmpty &&
+                      _messages.last.text == '正在思考…') {
+                    _messages.last.text = '已停止';
+                  }
+                });
               },
             ),
           ],

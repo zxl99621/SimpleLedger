@@ -1,43 +1,31 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_cloud_sync/flutter_cloud_sync.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:app_links/app_links.dart';
+import 'dart:async';
+import 'dart:io';
+import 'dart:ui';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 
 import 'app.dart';
-import 'widgets/biz/login_2fa_challenge_view.dart';
 import 'widgets/ui/toast.dart';
 import 'theme.dart';
 import 'providers.dart';
-import 'providers/currency_providers.dart';
 import 'providers/font_scale_provider.dart';
 import 'providers/simple_settings_providers.dart';
 import 'ai/simple/ai_providers.dart';
-import 'utils/app_localizations_resolver.dart';
-import 'providers/cloud_mode_providers.dart';
-import 'providers/ui_state_providers.dart';
-import 'utils/notification_factory.dart';
 import 'pages/auth/splash_page.dart';
 import 'pages/auth/simple_welcome_page.dart';
 import 'pages/auth/app_lock_screen.dart';
 import 'providers/security_providers.dart';
-import 'services/system/reminder_monitor_service.dart';
-import 'providers/credit_card_reminder_providers.dart';
-import 'services/platform/screenshot_monitor_service.dart';
 import 'services/platform/image_share_handler_service.dart';
 import 'services/platform/app_link_service.dart';
 import 'services/system/logger_service.dart';
 import 'l10n/app_localizations.dart';
 import 'widget/widget_manager.dart';
-import 'package:home_widget/home_widget.dart';
-import 'package:app_links/app_links.dart';
-import 'dart:async';
-import 'dart:io';
-import 'dart:ui';
-
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 
 
 /// 全局 navigator key — 给 service 层(没有 BuildContext)push 路由使用。
@@ -56,39 +44,8 @@ Future<void> main() async {
   logger.info('App', '应用启动，日志系统已初始化');
   print('📱 LoggerService 已初始化');
 
-  // 初始化时区（必须在通知服务之前，修复iOS通知问题）
-  try {
-    NotificationFactory.initializeTimeZone();
-  } catch (e) {
-    print('⚠️  时区初始化失败（可能在不支持的平台上运行）: $e');
-  }
-
-  // 配置iOS App Group（widget和主app共享数据必需）
-  try {
-    if (Platform.isIOS) {
-      await HomeWidget.setAppGroupId('group.com.tntlikely.beecount');
-    }
-  } catch (e) {
-    print('⚠️  HomeWidget 插件初始化失败（可能在不支持的平台上运行）: $e');
-  }
-
-  // 初始化通知服务
-  try {
-    final notificationUtil = NotificationFactory.getInstance();
-    await notificationUtil.initialize();
-  } catch (e) {
-    print('⚠️  通知服务初始化失败（可能在不支持的平台上运行）: $e');
-  }
-
-  // 恢复用户的记账提醒设置（关键修复：应用重启后自动恢复提醒）
-  await _restoreUserReminder();
-
-  // 启动提醒监控服务（监听应用生命周期，自动恢复丢失的提醒）
-  try {
-    ReminderMonitorService().startMonitoring();
-  } catch (e) {
-    print('⚠️  提醒监控服务启动失败（可能在不支持的平台上运行）: $e');
-  }
+  // 通知 / 提醒 / 信用卡还款提醒已按蓝皮书移出极简版，
+  // 启动阶段不再初始化这些插件，减少首帧前的阻塞。
 
   // 创建全局ProviderContainer（需要在周期交易生成之前创建，因为需要使用 repositoryProvider）
   // observers 必须挂在这里(根容器):无 override 的全局 provider 元素都挂载
@@ -100,23 +57,9 @@ Future<void> main() async {
     observers: const [_WidgetUpdateObserver()],
   );
 
-  // 初始化应用模式（需要在生成重复交易之前，确保模式正确）
-  // 直接从 SharedPreferences 读取并设置到 appModeProvider
-  await _initializeAppMode(container);
-
   // 注意：不再在启动时生成重复交易
   // 周期交易生成已移至 appSplashInitProvider 中（等待数据库完全初始化后执行）
   // await _generatePendingRecurringTransactions(container);
-
-  // 恢复信用卡还款提醒
-  try {
-    final repo = container.read(repositoryProvider);
-    await CreditCardReminderService.restoreAllReminders(
-      getCreditCardAccounts: () => repo.getCreditCardAccounts(),
-    );
-  } catch (e) {
-    // 静默失败，不影响启动
-  }
 
   // [已删除] v1.15.0 账户独立迁移 & v2.7.1 转账分类迁移
   // 所有活跃用户已完成，Drift onUpgrade 已覆盖相关 schema 变更
@@ -129,9 +72,6 @@ Future<void> main() async {
     logger.warning('App', '小组件回调注册失败（可能在不支持的平台上运行）: $e');
   }
 
-  // 恢复截图自动识别设置（Android专属），传入container
-  await _restoreScreenshotMonitor(container);
-
   // 初始化图片分享处理服务（Android专属）
   if (Platform.isAndroid) {
     _setupImageShareHandler(container);
@@ -139,18 +79,6 @@ Future<void> main() async {
 
   // 启动 URL 监听（用于快捷指令/AppLink 自动记账）
   _setupUrlListener(container);
-
-  // 注册 BeeCount Cloud 2FA challenge handler。当 server 返回 requires_2fa=true,
-  // service 层会调这个 handler 弹出 Login2FAChallengeDialog 让用户输码。
-  // 验证失败留在对话框就地展示错误,验证通过 / 用户取消才关闭。详见 .docs/2fa-design.md
-  BeeCountCloudProvider.globalTwoFactorHandler = (request) async {
-    final ctx = globalNavigatorKey.currentContext;
-    if (ctx == null) {
-      // 极端场景:cloud auth 在 navigator 还没 attach 之前触发,只能视为取消
-      return false;
-    }
-    return await Login2FAChallengeDialog.show(ctx, request);
-  };
 
   // 启动一次性磁盘孤立文件 GC(attachments / attachment_thumbs / custom_icons),
   // 清理历史版本遗留的文件。标志位 SharedPreferences 保证只跑一次。后台异步
@@ -215,115 +143,6 @@ class _WidgetUpdateObserver extends ProviderObserver {
     }
   }
 }
-
-/// 恢复用户之前设置的记账提醒
-///
-/// 问题场景：
-/// - 应用被系统杀死后，通知任务会丢失
-/// - 应用更新后，通知任务会被清除
-/// - 手机重启后，通知任务需要重新设置
-///
-/// 解决方案：
-/// - 在应用启动时检查用户是否开启了提醒
-/// - 如果开启了，重新设置通知任务
-Future<void> _restoreUserReminder() async {
-  try {
-    print('🔄 检查并恢复记账提醒...');
-    final prefs = await SharedPreferences.getInstance();
-    final isEnabled = prefs.getBool('reminder_enabled') ?? false;
-
-    if (isEnabled) {
-      final hour = prefs.getInt('reminder_hour') ?? 21;
-      final minute = prefs.getInt('reminder_minute') ?? 0;
-      print('✅ 发现用户已启用记账提醒: ${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}');
-      print('🔔 正在重新设置提醒任务...');
-
-      try {
-        final notificationUtil = NotificationFactory.getInstance();
-        // 冷启动时 languageProvider 的异步加载可能未完成,直接读同一组
-        // 偏好键(与 provider 共用常量),让应用内语言覆盖在恢复路径同样生效。
-        final languageCode = prefs.getString(LanguageNotifier.languagePrefKey);
-        final countryCode =
-            prefs.getString(LanguageNotifier.languagePrefCountryKey);
-        final l10n = resolveAppLocalizations(languageCode == null
-            ? null
-            : Locale(languageCode, countryCode));
-        await notificationUtil.scheduleDailyReminder(
-          id: 1001,
-          title: l10n.reminderTitle,
-          body: l10n.reminderDailyBody,
-          hour: hour,
-          minute: minute,
-        );
-        print('✅ 记账提醒已成功恢复');
-      } catch (e) {
-        print('❌ 记账提醒设置失败（可能在不支持的平台上运行）: $e');
-      }
-    } else {
-      print('ℹ️  用户未启用记账提醒，跳过恢复');
-    }
-  } catch (e) {
-    print('❌ 恢复记账提醒失败: $e');
-    // 不抛出异常，避免影响应用启动
-  }
-}
-
-/// 恢复截图自动识别设置（仅Android）
-///
-/// 问题场景：
-/// - 应用重启后，截图监听服务会丢失
-/// - 需要自动恢复用户之前的设置
-///
-/// 解决方案：
-/// - 在应用启动时检查用户是否开启了截图监听
-/// - 如果开启了，重新启动监听服务
-Future<void> _restoreScreenshotMonitor(ProviderContainer container) async {
-  if (!Platform.isAndroid) return;
-
-  try {
-    print('📸 检查并恢复截图自动识别...');
-    final screenshotMonitor = ScreenshotMonitorService(container);
-    final isEnabled = await screenshotMonitor.isEnabled();
-
-    if (isEnabled) {
-      print('✅ 发现用户已启用截图自动识别');
-      print('🔄 正在重新启动监听服务...');
-      await screenshotMonitor.enable();
-      print('✅ 截图监听服务已成功恢复');
-    } else {
-      print('ℹ️  用户未启用截图自动识别，跳过恢复');
-    }
-  } catch (e) {
-    print('❌ 恢复截图监听失败: $e');
-    // 不抛出异常，避免影响应用启动
-  }
-}
-
-/// 初始化应用模式
-///
-/// 在应用启动时从 SharedPreferences 读取模式并设置到 appModeProvider
-/// 这样可以确保后续使用 repositoryProvider 时能获取到正确的模式
-/// [container] Provider容器
-Future<void> _initializeAppMode(ProviderContainer container) async {
-  try {
-    print('⏳ 初始化应用模式...');
-
-    // 从 SharedPreferences 直接读取模式
-    final prefs = await SharedPreferences.getInstance();
-    final modeStr = prefs.getString('app_mode');
-    final mode = modeStr != null ? AppMode.fromString(modeStr) : AppMode.local;
-
-    // 使用 switchMode 方法设置模式，确保 repositoryProvider 能立即获取到正确的模式
-    // switchMode 不会重复写入 SharedPreferences，因为值已经存在
-    await container.read(appModeProvider.notifier).switchMode(mode);
-
-    print('✅ 应用模式已初始化: ${mode.label}');
-  } catch (e, stackTrace) {
-    print('⚠️  应用模式初始化失败: $e');
-    logger.error('Main', '应用模式初始化失败', e, stackTrace);
-  }
-}
-
 
 /// 设置图片分享处理（Android专属）
 ///
@@ -494,7 +313,6 @@ class MainApp extends ConsumerWidget {
 
     // 检查应用初始化状态
     final initState = ref.watch(appInitStateProvider);
-    final selectedLanguage = ref.watch(languageProvider);
 
     // 如果是启屏状态，启动初始化
     if (initState == AppInitState.splash) {
@@ -589,13 +407,8 @@ class MainApp extends ConsumerWidget {
           GlobalWidgetsLocalizations.delegate,
           GlobalCupertinoLocalizations.delegate,
         ],
-        supportedLocales: const [
-          Locale('en'),
-          Locale('zh'),
-          Locale('zh', 'TW'),
-          Locale('ko'),
-        ],
-        locale: selectedLanguage,
+        supportedLocales: const [Locale('zh')],
+        locale: const Locale('zh'),
         builder: (context, child) {
           final showPrivacy = ref.watch(showPrivacyScreenProvider);
           return Stack(
