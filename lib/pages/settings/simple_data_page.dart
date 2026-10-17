@@ -52,7 +52,18 @@ class _SimpleDataPageState extends ConsumerState<SimpleDataPage> {
   }
 
   Future<void> _createBackup() async {
-    final choice = await _askBackupPassword();
+    final dbOnlyBytes = await _backupService.estimateBackupSize(
+      includeImages: false,
+    );
+    final fullBytes = await _backupService.estimateBackupSize(
+      includeImages: true,
+    );
+    if (!mounted) return;
+
+    final choice = await _askBackupOptions(
+      dbOnlyBytes: dbOnlyBytes,
+      fullBytes: fullBytes,
+    );
     if (choice == null) return;
 
     await _runBusy('正在打包备份…', () async {
@@ -60,10 +71,12 @@ class _SimpleDataPageState extends ConsumerState<SimpleDataPage> {
       // 把 WAL 内容合并回主数据库文件，保证备份是完整快照。
       await db.customStatement('PRAGMA wal_checkpoint(TRUNCATE)');
 
-      final zip = await _backupService.createBackup();
+      final zip = await _backupService.createBackup(
+        includeImages: choice.includeImages,
+      );
       if (await zip.length() > _maxBackupBytes) {
         if (await zip.exists()) await zip.delete();
-        _showMessage('备份超过 512 MB，当前版本无法安全保存，请先清理部分图片附件');
+        _showMessage('备份超过 512 MB，当前版本无法安全保存，请改用“仅数据库”或先清理附件');
         return;
       }
 
@@ -83,86 +96,147 @@ class _SimpleDataPageState extends ConsumerState<SimpleDataPage> {
         allowedExtensions: extensions,
         bytes: bytes,
       );
-      if (saved != null) {
-        if (mounted) _showMessage(choice.password == null ? '备份已保存' : '加密备份已保存');
+      if (saved != null && mounted) {
+        final content = choice.includeImages ? '完整备份' : '数据备份（不含图片）';
+        _showMessage(choice.password == null ? '$content已保存' : '加密$content已保存');
       }
       if (await zip.exists()) await zip.delete();
     });
   }
 
-  /// 返回 null 表示用户取消；password 为 null 表示不加密。
-  Future<_BackupPasswordChoice?> _askBackupPassword() async {
+  static String _formatBytes(int bytes) {
+    if (bytes >= 1024 * 1024 * 1024) {
+      return '${(bytes / 1024 / 1024 / 1024).toStringAsFixed(1)} GB';
+    }
+    if (bytes >= 1024 * 1024) {
+      return '${(bytes / 1024 / 1024).toStringAsFixed(1)} MB';
+    }
+    return '${(bytes / 1024).toStringAsFixed(0)} KB';
+  }
+
+  /// 返回 null 表示用户取消。
+  Future<_BackupChoice?> _askBackupOptions({
+    required int dbOnlyBytes,
+    required int fullBytes,
+  }) async {
     final password = TextEditingController();
     final confirm = TextEditingController();
+    var includeImages = true;
     var usePassword = false;
     String? error;
 
-    final result = await showDialog<_BackupPasswordChoice>(
+    final result = await showDialog<_BackupChoice>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('备份选项'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                value: usePassword,
-                onChanged: (value) =>
-                    setDialogState(() => usePassword = value),
-                title: const Text('使用密码加密'),
-                subtitle: const Text('恢复时需要输入同一密码；忘记密码将无法恢复'),
-              ),
-              if (usePassword) ...[
-                TextField(
-                  controller: password,
-                  obscureText: true,
-                  decoration: const InputDecoration(labelText: '密码（至少 8 位）'),
+        builder: (context, setDialogState) {
+          final estimated = includeImages ? fullBytes : dbOnlyBytes;
+          final overLimit = estimated > _maxBackupBytes;
+          return AlertDialog(
+            title: const Text('备份选项'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: includeImages,
+                  onChanged: (value) =>
+                      setDialogState(() => includeImages = value),
+                  title: const Text('包含图片附件'),
+                  subtitle: const Text('关闭后仅备份账单/分类/标签，文件更小、速度更快'),
                 ),
-                TextField(
-                  controller: confirm,
-                  obscureText: true,
-                  decoration: const InputDecoration(labelText: '确认密码'),
-                ),
-              ],
-              if (error != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 12),
+                Align(
+                  alignment: Alignment.centerLeft,
                   child: Text(
-                    error!,
+                    '预计大小：${_formatBytes(estimated)}',
                     style: TextStyle(
-                        color: Theme.of(context).colorScheme.error),
+                      fontSize: 13,
+                      color: overLimit
+                          ? Theme.of(context).colorScheme.error
+                          : null,
+                    ),
                   ),
                 ),
+                if (overLimit)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      '超过 512 MB，当前版本无法安全保存；请关闭“包含图片附件”或先清理附件。',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                    ),
+                  ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: usePassword,
+                  onChanged: (value) => setDialogState(() {
+                    usePassword = value;
+                    error = null;
+                  }),
+                  title: const Text('使用密码加密'),
+                  subtitle: const Text('恢复时需要输入同一密码；忘记密码将无法恢复'),
+                ),
+                if (usePassword) ...[
+                  TextField(
+                    controller: password,
+                    obscureText: true,
+                    decoration: const InputDecoration(labelText: '密码（至少 8 位）'),
+                  ),
+                  TextField(
+                    controller: confirm,
+                    obscureText: true,
+                    decoration: const InputDecoration(labelText: '确认密码'),
+                  ),
+                ],
+                if (error != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: Text(
+                      error!,
+                      style:
+                          TextStyle(color: Theme.of(context).colorScheme.error),
+                    ),
+                  ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                onPressed: overLimit
+                    ? null
+                    : () {
+                        if (!usePassword) {
+                          Navigator.pop(
+                            dialogContext,
+                            _BackupChoice(includeImages: includeImages),
+                          );
+                          return;
+                        }
+                        if (password.text.length < 8) {
+                          setDialogState(() => error = '密码至少 8 位');
+                          return;
+                        }
+                        if (password.text != confirm.text) {
+                          setDialogState(() => error = '两次输入的密码不一致');
+                          return;
+                        }
+                        Navigator.pop(
+                          dialogContext,
+                          _BackupChoice(
+                            includeImages: includeImages,
+                            password: password.text,
+                          ),
+                        );
+                      },
+                child: const Text('开始备份'),
+              ),
             ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () {
-                if (!usePassword) {
-                  Navigator.pop(
-                      dialogContext, const _BackupPasswordChoice.plain());
-                  return;
-                }
-                if (password.text.length < 8) {
-                  setDialogState(() => error = '密码至少 8 位');
-                  return;
-                }
-                if (password.text != confirm.text) {
-                  setDialogState(() => error = '两次输入的密码不一致');
-                  return;
-                }
-                Navigator.pop(
-                    dialogContext, _BackupPasswordChoice(password.text));
-              },
-              child: const Text('开始备份'),
-            ),
-          ],
-        ),
+          );
+        },
       ),
     );
 
@@ -252,9 +326,12 @@ class _SimpleDataPageState extends ConsumerState<SimpleDataPage> {
       final extracted = await _backupService.extractAndValidate(bytes);
 
       if (!mounted) return;
+      final hasImages = await SimpleBackupService.hasContentDirs(extracted);
       final confirmed = await _confirm(
         title: '恢复备份？',
-        message: '当前账单与图片将被备份内容完全覆盖，且无法撤销。恢复完成后 App 会自动关闭，请重新打开。',
+        message: hasImages
+            ? '当前账单与图片将被备份内容完全覆盖，且无法撤销。恢复完成后 App 会自动关闭，请重新打开。'
+            : '当前账单将被备份数据库覆盖，现有图片会保留；此操作无法撤销。恢复完成后 App 会自动关闭，请重新打开。',
         confirmText: '恢复并覆盖',
       );
       if (!confirmed) {
@@ -525,10 +602,10 @@ class _SimpleDataPageState extends ConsumerState<SimpleDataPage> {
   }
 }
 
-/// 备份是否加密及密码；[password] 为 null 表示明文 zip。
-class _BackupPasswordChoice {
-  const _BackupPasswordChoice(this.password);
-  const _BackupPasswordChoice.plain() : password = null;
+/// 备份选项：是否包含图片，以及可选密码（null 表示明文）。
+class _BackupChoice {
+  const _BackupChoice({required this.includeImages, this.password});
 
+  final bool includeImages;
   final String? password;
 }

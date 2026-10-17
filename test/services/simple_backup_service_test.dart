@@ -189,5 +189,88 @@ void main() {
 
       expect(await oldDb.readAsString(), 'OLD');
     });
+
+    test('仅数据库备份恢复时保留现有图片目录', () async {
+      final oldDb = File(p.join(docs.path, SimpleBackupService.dbFileName));
+      await oldDb.writeAsString('OLD');
+      final attachments = Directory(p.join(docs.path, 'attachments'));
+      await attachments.create(recursive: true);
+      final oldImage = File(p.join(attachments.path, 'old.jpg'));
+      await oldImage.writeAsBytes([7, 8, 9]);
+
+      final newDb = File(p.join(extracted.path, SimpleBackupService.dbFileName));
+      await newDb.writeAsString('NEW');
+
+      await SimpleBackupService()
+          .applyRestore(extracted.path, documentsDir: docs);
+
+      expect(
+        await File(p.join(docs.path, SimpleBackupService.dbFileName))
+            .readAsString(),
+        'NEW',
+      );
+      expect(await oldImage.exists(), isTrue);
+    });
+  });
+
+  group('createBackup', () {
+    late Directory docs;
+
+    setUp(() async {
+      docs = await Directory.systemTemp.createTemp('backup_create_test_');
+      await File(p.join(docs.path, SimpleBackupService.dbFileName))
+          .writeAsString('DB');
+      final attachments = Directory(p.join(docs.path, 'attachments'));
+      await attachments.create(recursive: true);
+      await File(p.join(attachments.path, 'bill.jpg')).writeAsBytes([1, 2, 3]);
+    });
+
+    tearDown(() async {
+      if (await docs.exists()) await docs.delete(recursive: true);
+    });
+
+    List<String> zipNames(File zip) {
+      final archive = ZipDecoder().decodeBytes(zip.readAsBytesSync());
+      return archive.files.map((f) => f.name).toList();
+    }
+
+    test('includeImages=false 只打包数据库', () async {
+      final zip = await SimpleBackupService()
+          .createBackup(includeImages: false, documentsDir: docs);
+      addTearDown(() async {
+        if (await zip.exists()) await zip.delete();
+      });
+
+      final names = zipNames(zip);
+      expect(names, contains(SimpleBackupService.dbFileName));
+      expect(names.any((n) => n.startsWith('attachments/')), isFalse);
+    });
+
+    test('includeImages=true 包含图片目录', () async {
+      final zip = await SimpleBackupService()
+          .createBackup(includeImages: true, documentsDir: docs);
+      addTearDown(() async {
+        if (await zip.exists()) await zip.delete();
+      });
+
+      expect(
+        zipNames(zip).any((n) => n.startsWith('attachments/')),
+        isTrue,
+      );
+    });
+
+    test('预估大小区分是否包含图片', () async {
+      final dbOnly = await SimpleBackupService().estimateBackupSize(
+        includeImages: false,
+        documentsDir: docs,
+      );
+      final full = await SimpleBackupService().estimateBackupSize(
+        includeImages: true,
+        documentsDir: docs,
+      );
+
+      expect(dbOnly, 2);
+      expect(full, greaterThan(dbOnly));
+    });
   });
 }

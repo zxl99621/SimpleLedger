@@ -25,8 +25,14 @@ class SimpleBackupService {
   ];
 
   /// 生成备份 zip（位于系统临时目录），返回文件。
-  Future<File> createBackup() async {
-    final docs = await getApplicationDocumentsDirectory();
+  ///
+  /// [includeImages] 为 false 时只打包数据库，适合日常快速备份；
+  /// 图片附件、缩略图和自定义图标会被跳过。
+  Future<File> createBackup({
+    bool includeImages = true,
+    Directory? documentsDir,
+  }) async {
+    final docs = documentsDir ?? await getApplicationDocumentsDirectory();
     final stamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
     final zipPath = p.join(
       Directory.systemTemp.path,
@@ -42,16 +48,50 @@ class SimpleBackupService {
     encoder.create(zipPath);
     try {
       await encoder.addFile(dbFile, dbFileName);
-      for (final name in contentDirs) {
-        final dir = Directory(p.join(docs.path, name));
-        if (await dir.exists()) {
-          await encoder.addDirectory(dir, includeDirName: true);
+      if (includeImages) {
+        for (final name in contentDirs) {
+          final dir = Directory(p.join(docs.path, name));
+          if (await dir.exists()) {
+            await encoder.addDirectory(dir, includeDirName: true);
+          }
         }
       }
     } finally {
       await encoder.close();
     }
     return File(zipPath);
+  }
+
+  /// 估算备份体积（未压缩前的文件总量），用于备份前提示用户。
+  Future<int> estimateBackupSize({
+    required bool includeImages,
+    Directory? documentsDir,
+  }) async {
+    final docs = documentsDir ?? await getApplicationDocumentsDirectory();
+    var total = 0;
+
+    final dbFile = File(p.join(docs.path, dbFileName));
+    if (await dbFile.exists()) total += await dbFile.length();
+
+    if (includeImages) {
+      for (final name in contentDirs) {
+        final dir = Directory(p.join(docs.path, name));
+        if (!await dir.exists()) continue;
+        await for (final entity
+            in dir.list(recursive: true, followLinks: false)) {
+          if (entity is File) total += await entity.length();
+        }
+      }
+    }
+    return total;
+  }
+
+  /// 备份中是否包含图片目录。仅数据库的备份恢复时不应覆盖现有图片。
+  static Future<bool> hasContentDirs(String extractedDir) async {
+    for (final name in contentDirs) {
+      if (await Directory(p.join(extractedDir, name)).exists()) return true;
+    }
+    return false;
   }
 
   /// 校验备份并解压到临时目录。返回临时目录路径。
@@ -207,6 +247,8 @@ class SimpleBackupService {
     );
     await rollback.create(recursive: true);
     final moved = <String>[];
+    // 仅数据库的备份不携带图片目录：恢复时保留现有图片。
+    final hasContent = await hasContentDirs(source.path);
 
     try {
       for (final suffix in ['', '-wal', '-shm']) {
@@ -218,20 +260,24 @@ class SimpleBackupService {
         }
       }
 
-      for (final name in contentDirs) {
-        final dir = Directory(p.join(docs.path, name));
-        if (await dir.exists()) {
-          await dir.rename(p.join(rollback.path, name));
-          moved.add(name);
+      if (hasContent) {
+        for (final name in contentDirs) {
+          final dir = Directory(p.join(docs.path, name));
+          if (await dir.exists()) {
+            await dir.rename(p.join(rollback.path, name));
+            moved.add(name);
+          }
         }
       }
 
       await restoredDb.copy(p.join(docs.path, dbFileName));
 
-      for (final name in contentDirs) {
-        final backupDir = Directory(p.join(source.path, name));
-        if (await backupDir.exists()) {
-          await _copyDirectory(backupDir, Directory(p.join(docs.path, name)));
+      if (hasContent) {
+        for (final name in contentDirs) {
+          final backupDir = Directory(p.join(source.path, name));
+          if (await backupDir.exists()) {
+            await _copyDirectory(backupDir, Directory(p.join(docs.path, name)));
+          }
         }
       }
 
@@ -242,9 +288,11 @@ class SimpleBackupService {
         final file = File(p.join(docs.path, '$dbFileName$suffix'));
         if (await file.exists()) await file.delete();
       }
-      for (final name in contentDirs) {
-        final dir = Directory(p.join(docs.path, name));
-        if (await dir.exists()) await dir.delete(recursive: true);
+      if (hasContent) {
+        for (final name in contentDirs) {
+          final dir = Directory(p.join(docs.path, name));
+          if (await dir.exists()) await dir.delete(recursive: true);
+        }
       }
 
       for (final name in moved) {
