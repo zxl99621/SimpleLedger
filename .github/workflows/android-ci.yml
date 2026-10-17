@@ -32,6 +32,7 @@ jobs:
         # 只让真正的 error 使 CI 失败；warning/info 不作为门禁。
         shell: bash
         run: |
+          set +e
           set -o pipefail
           flutter --version
           flutter analyze --no-fatal-infos --no-fatal-warnings lib 2>&1 | tee analyze.log
