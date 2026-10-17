@@ -34,6 +34,9 @@ echo "  Source: $SRC"
 echo "  Notes:  $NOTES"
 
 # ---------- GitHub ----------
+if [ -z "${GH_TOKEN:-}" ] && [ -f "D:/AndroidDevCache/github_token.txt" ]; then
+  export GH_TOKEN="$(tr -d '\r\n' < "D:/AndroidDevCache/github_token.txt")"
+fi
 if gh auth status >/dev/null 2>&1; then
   if gh release view "$TAG" -R "$GH_REPO" >/dev/null 2>&1; then
     echo "GitHub release $TAG already exists; uploading assets..."
