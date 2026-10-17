@@ -1,0 +1,58 @@
+# ---- OS / editors ----
+.DS_Store
+Thumbs.db
+*.swp
+*.iml
+.idea/
+.vscode/
+
+# ---- Flutter / Dart ----
+.dart_tool/
+.packages
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+build/
+**/build/
+coverage/
+**/doc/api/
+app.*.symbols
+app.*.map.json
+
+# ---- Android / signing ----
+android/.gradle/
+android/local.properties
+android/key.properties
+android/*.keystore
+android/app/*.keystore
+*.jks
+*.keystore
+*.p12
+/android/app/debug
+/android/app/profile
+/android/app/release
+
+# ---- Local AI models ----
+models/
+*.gguf
+*.gguf.part
+
+# ---- Logs / screenshots / temp ----
+*.log
+screen*.png
+ui.xml
+*.tmp
+.tmp/
+tmp/
+
+# ---- Local/private context (never publish) ----
+.claude/
+.agents/
+AGENTS.md
+CLAUDE.md
+.docs/
+.superpowers/
+docs/superpowers/
+.playwright-mcp/
+design-prototypes/

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- 账本/小票轮廓 -->
+    <path
+        android:fillColor="#F4F8F7"
+        android:pathData="M34,24 L74,24 C78.4,24 82,27.6 82,32 L82,84 L74,78 L66,84 L58,78 L50,84 L42,78 L34,84 L34,32 C34,27.6 37.6,24 42,24 Z" />
+    <!-- 金额行 -->
+    <path
+        android:fillColor="#0E7369"
+        android:pathData="M43,39 L65,39 L65,44 L43,44 Z" />
+    <path
+        android:fillColor="#0E7369"
+        android:pathData="M43,51 L65,51 L65,56 L43,56 Z" />
+    <path
+        android:fillColor="#0E7369"
+        android:pathData="M43,63 L56,63 L56,68 L43,68 Z" />
+</vector>
