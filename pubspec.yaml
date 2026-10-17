@@ -161,3 +161,12 @@ flutter:
   #         weight: 600
   #       - asset: assets/fonts/NotoSansSC-Bold.ttf
   #         weight: 700
+
+# 国内网络下 sqlite3 的 native assets 默认从 GitHub Releases 下载预编译库，
+# 网络不可达时构建会失败。这里改用可访问的镜像；$RELEASE_TAG / $FILENAME
+# 由 Dart build hook 替换。
+hooks:
+  user_defines:
+    sqlite3:
+      source: sqlite3
+      url_pattern: "https://ghproxy.net/https://github.com/simolus3/sqlite3.dart/releases/download/$RELEASE_TAG/$FILENAME"

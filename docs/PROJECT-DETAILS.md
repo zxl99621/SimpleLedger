@@ -87,6 +87,10 @@ flutter build apk --release --flavor prod --target-platform android-arm64
 > 本地 Pub / Gradle 缓存位于 D 盘（`D:\AndroidDevCache`），项目与 Android SDK/NDK 位于 F 盘。
 > Kotlin 增量编译已关闭（`kotlin.incremental=false`），因为缓存跨盘符会导致增量缓存报错。
 
+> `sqlite3` 3.7 的 native assets 默认从 GitHub Releases 下载预编译库；`pubspec.yaml` 的
+> `hooks.user_defines.sqlite3.url_pattern` 已指向 `ghproxy.net` 镜像。若该镜像不可用，
+> 可改为 `https://gh-proxy.com/https://github.com/...` 或配置网络代理后删除该配置。
+
 ## 数据与隐私
 
 - 所有账单、标签、图片、配置均保存在 App 私有目录

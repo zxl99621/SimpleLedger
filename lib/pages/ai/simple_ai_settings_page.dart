@@ -29,6 +29,7 @@ class _SimpleAiSettingsPageState extends ConsumerState<SimpleAiSettingsPage> {
 
   final _downloader = ModelDownloader();
   String? _downloadingId;
+  bool _cancelling = false;
   int _received = 0;
   int _total = -1;
   bool _testing = false;
@@ -97,6 +98,7 @@ class _SimpleAiSettingsPageState extends ConsumerState<SimpleAiSettingsPage> {
     final file = File(path);
     setState(() {
       _downloadingId = model.id;
+      _cancelling = false;
       _received = 0;
       _total = -1;
     });
@@ -115,11 +117,18 @@ class _SimpleAiSettingsPageState extends ConsumerState<SimpleAiSettingsPage> {
       ref.read(aiLocalModelIdProvider.notifier).state = model.id;
       if (mounted) setState(() {});
       _showMessage('${model.label} 下载完成');
+    } on DownloadCancelled {
+      if (mounted) _showMessage('下载已取消');
     } catch (error) {
-      _showMessage(error is AiException ? error.message : '下载失败：$error');
+      _showMessage(
+        error is AiException ? error.message : '下载失败，请检查网络后重试',
+      );
     } finally {
       if (mounted) {
-        setState(() => _downloadingId = null);
+        setState(() {
+          _downloadingId = null;
+          _cancelling = false;
+        });
       }
     }
   }
@@ -309,6 +318,18 @@ class _SimpleAiSettingsPageState extends ConsumerState<SimpleAiSettingsPage> {
                 ),
             ]),
             _sectionTitle('本地模型'),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 0, 4, 10),
+              child: Text(
+                '模型文件较大，建议在 Wi-Fi 环境下下载，并确认手机有足够存储空间。'
+                '下载可随时取消；取消后需要重新下载（暂不支持断点续传）。',
+                style: TextStyle(
+                  fontSize: 11,
+                  height: 1.5,
+                  color: BeeTokens.textTertiary(context),
+                ),
+              ),
+            ),
             for (final model in localModelCatalog) ...[
               _modelCard(model, selectedId, modelDir),
               const SizedBox(height: 10),
@@ -443,11 +464,13 @@ class _SimpleAiSettingsPageState extends ConsumerState<SimpleAiSettingsPage> {
             children: [
               if (downloading)
                 OutlinedButton(
-                  onPressed: () {
-                    _downloader.cancel();
-                    setState(() => _downloadingId = null);
-                  },
-                  child: const Text('取消'),
+                  onPressed: _cancelling
+                      ? null
+                      : () {
+                          setState(() => _cancelling = true);
+                          _downloader.cancel();
+                        },
+                  child: Text(_cancelling ? '正在取消…' : '取消'),
                 )
               else if (!exists)
                 FilledButton(
