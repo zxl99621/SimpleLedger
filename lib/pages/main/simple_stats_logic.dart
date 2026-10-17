@@ -1,7 +1,27 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 /// 饼图最多展示的分类数；其余合并为「其他」。
 const int expensePieTopCount = 5;
+
+const Color _pieLabelDark = Color(0xFF1B1F1C);
+
+/// 根据扇区底色选择白/深色文字，保证百分比标签可读。
+Color readablePieLabelColor(Color background) {
+  final white = contrastRatio(background, Colors.white);
+  final dark = contrastRatio(background, _pieLabelDark);
+  return white >= dark ? Colors.white : _pieLabelDark;
+}
+
+/// WCAG 相对亮度对比度。
+double contrastRatio(Color a, Color b) {
+  final la = a.computeLuminance();
+  final lb = b.computeLuminance();
+  final lighter = math.max(la, lb);
+  final darker = math.min(la, lb);
+  return (lighter + 0.05) / (darker + 0.05);
+}
 
 /// 按支出金额取 Top5，固定色槽顺序分配颜色，剩余金额合并为「其他」。
 ///

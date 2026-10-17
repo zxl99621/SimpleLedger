@@ -42,7 +42,7 @@ void main() {
       await tester.pump();
 
       expect(tester.takeException(), isNull);
-      expect(find.text('收支速览'), findsOneWidget);
+      expect(find.text('本月支出'), findsOneWidget);
     });
 
     testWidgets('364x182(Android 2:1)暗色下正常渲染,不抛异常', (tester) async {

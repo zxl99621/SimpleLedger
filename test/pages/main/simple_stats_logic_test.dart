@@ -14,6 +14,38 @@ const _palette = <Color>[
 const _other = Color(0xFFAAAAAA);
 
 void main() {
+  group('readablePieLabelColor', () {
+    test('浅色扇区使用深色文字', () {
+      expect(
+        readablePieLabelColor(const Color(0xFFEDA100)),
+        const Color(0xFF1B1F1C),
+      );
+      expect(
+        readablePieLabelColor(const Color(0xFFFFFFFF)),
+        const Color(0xFF1B1F1C),
+      );
+    });
+
+    test('深色扇区使用白色文字', () {
+      expect(readablePieLabelColor(const Color(0xFF2A78D6)), Colors.white);
+      expect(readablePieLabelColor(const Color(0xFF000000)), Colors.white);
+    });
+
+    test('返回的颜色与背景对比度不低于另一种候选色', () {
+      for (final color in _palette) {
+        final chosen = readablePieLabelColor(color);
+        final other = chosen == Colors.white
+            ? const Color(0xFF1B1F1C)
+            : Colors.white;
+        expect(
+          contrastRatio(color, chosen),
+          greaterThanOrEqualTo(contrastRatio(color, other)),
+          reason: '背景 $color 应选对比度更高的文字色',
+        );
+      }
+    });
+  });
+
   group('buildExpensePieSlices', () {
     test('Top5 按金额取，不受分类排序位置限制', () {
       final categories = <({int? id, String name, double total})>[

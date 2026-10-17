@@ -44,11 +44,11 @@ class BeeCountWidgetProvider : HomeWidgetProvider() {
                             setImageViewBitmap(R.id.widget_image, bitmap)
                         } else {
                             Log.e(TAG, "Failed to decode bitmap from file")
-                            setImageViewResource(R.id.widget_image, R.mipmap.ic_launcher)
+                            setImageViewResource(R.id.widget_image, R.drawable.widget_preview_glance)
                         }
                     } else {
                         Log.w(TAG, "No image path in SharedPreferences, showing placeholder")
-                        setImageViewResource(R.id.widget_image, R.mipmap.ic_launcher)
+                        setImageViewResource(R.id.widget_image, R.drawable.widget_preview_glance)
                     }
 
                     // 整块组件 → 打开支出记账

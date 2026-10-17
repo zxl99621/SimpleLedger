@@ -361,8 +361,8 @@ class _SimpleStatsPageState extends ConsumerState<SimpleStatsPage> {
           ),
           style: TextButton.styleFrom(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-            minimumSize: const Size(0, 32),
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            minimumSize: const Size(0, 44),
+            tapTargetSize: MaterialTapTargetSize.padded,
           ),
         ),
       ),
@@ -493,31 +493,34 @@ class _ScopeSelector extends StatelessWidget {
         ])
           Padding(
             padding: const EdgeInsets.only(right: 8),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(18),
-              onTap: () => onSelect(entry.$1),
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-                decoration: BoxDecoration(
-                  color: scope == entry.$1
-                      ? Theme.of(context).colorScheme.primary
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 44),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(18),
+                onTap: () => onSelect(entry.$1),
+                child: Container(
+                  alignment: Alignment.center,
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  decoration: BoxDecoration(
                     color: scope == entry.$1
-                        ? Colors.transparent
-                        : hairline,
+                        ? Theme.of(context).colorScheme.primary
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(
+                      color: scope == entry.$1
+                          ? Colors.transparent
+                          : hairline,
+                    ),
                   ),
-                ),
-                child: Text(
-                  entry.$2,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                    color: scope == entry.$1
-                        ? Theme.of(context).colorScheme.onPrimary
-                        : muted,
+                  child: Text(
+                    entry.$2,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: scope == entry.$1
+                          ? Theme.of(context).colorScheme.onPrimary
+                          : muted,
+                    ),
                   ),
                 ),
               ),
@@ -655,7 +658,7 @@ class _MetricBlock extends StatelessWidget {
         Text(label, style: TextStyle(fontSize: 12, color: muted)),
         const SizedBox(height: 7),
         Row(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisSize: MainAxisSize.max,
           crossAxisAlignment: CrossAxisAlignment.baseline,
           textBaseline: TextBaseline.alphabetic,
           children: [
@@ -663,13 +666,20 @@ class _MetricBlock extends StatelessWidget {
                 style:
                     TextStyle(fontSize: 13, color: color.withValues(alpha: 0.8))),
             const SizedBox(width: 3),
-            Text(
-              NumberFormat('#,##0.00').format(value),
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.w600,
-                color: color,
-                fontFeatures: const [FontFeature.tabularFigures()],
+            Flexible(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment:
+                    alignEnd ? Alignment.centerRight : Alignment.centerLeft,
+                child: Text(
+                  NumberFormat('#,##0.00').format(value),
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w600,
+                    color: color,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
               ),
             ),
           ],
@@ -786,10 +796,10 @@ class _PieSection extends StatelessWidget {
                         showTitle: total > 0 && slice.total / total >= 0.08,
                         title:
                             '${(slice.total / total * 100).toStringAsFixed(0)}%',
-                        titleStyle: const TextStyle(
+                        titleStyle: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
-                          color: Colors.white,
+                          color: readablePieLabelColor(slice.color),
                         ),
                       ),
                   ],

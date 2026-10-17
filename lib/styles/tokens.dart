@@ -30,40 +30,42 @@ class BeeTokens {
   // ========== 背景色 Token (Surface) ==========
 
   /// 页面背景色（Scaffold 背景）
-  /// - 亮色模式：#FAFAFA (灰50)
-  /// - 暗黑模式：#000000 (纯黑)
+  /// - 亮色模式：#F4F8F7 (Ink & Teal 纸底)
+  /// - 暗黑模式：#0E1615
   static Color scaffoldBackground(BuildContext context) =>
-      isDark(context) ? Colors.black : Colors.grey.shade50;
+      isDark(context) ? const Color(0xFF0E1615) : const Color(0xFFF4F8F7);
 
   /// 卡片背景色（贴在页面上的卡片）
   /// - 亮色模式：#FFFFFF (白色)
-  /// - 暗黑模式：#1C1C1E (深灰，与纯黑背景形成对比)
+  /// - 暗黑模式：#182220
   static Color surface(BuildContext context) =>
-      isDark(context) ? const Color(0xFF1C1C1E) : Colors.white;
+      isDark(context) ? const Color(0xFF182220) : Colors.white;
 
   /// 次级背景色（嵌套卡片、输入框背景）
   /// - 亮色模式：#F5F5F5 (灰100)
-  /// - 暗黑模式：#2C2C2E (更深的灰)
+  /// - 暗黑模式：#1F2C2A
   static Color surfaceSecondary(BuildContext context) =>
-      isDark(context) ? const Color(0xFF2C2C2E) : Colors.grey.shade100;
+      isDark(context) ? const Color(0xFF1F2C2A) : Colors.grey.shade100;
 
   /// 悬浮卡片背景色（Dialog、BottomSheet、Dropdown 等）
   /// - 亮色模式：#FFFFFF (白色)
-  /// - 暗黑模式：#2C2C2E (略亮于普通卡片)
+  /// - 暗黑模式：#1F2C2A (略亮于普通卡片)
   static Color surfaceElevated(BuildContext context) =>
-      isDark(context) ? const Color(0xFF2C2C2E) : Colors.white;
+      isDark(context) ? const Color(0xFF1F2C2A) : Colors.white;
 
   /// PrimaryHeader 背景色
   /// - 亮色模式：用户选择的主题色
-  /// - 暗黑模式：#000000 (纯黑)
+  /// - 暗黑模式：#0E1615
   static Color surfaceHeader(BuildContext context) =>
-      isDark(context) ? Colors.black : Theme.of(context).colorScheme.primary;
+      isDark(context)
+          ? const Color(0xFF0E1615)
+          : Theme.of(context).colorScheme.primary;
 
   /// BottomSheet 背景色（金额输入等弹窗）
   /// - 亮色模式：#FFFFFF (白色)
-  /// - 暗黑模式：#000000 (纯黑)
+  /// - 暗黑模式：#182220
   static Color surfaceSheet(BuildContext context) =>
-      isDark(context) ? Colors.black : Colors.white;
+      isDark(context) ? const Color(0xFF182220) : Colors.white;
 
   /// 键盘按钮背景色
   /// - 亮色模式：#FFFFFF (白色)
@@ -158,12 +160,12 @@ class BeeTokens {
           : const Color(0x8A000000);
 
   /// 提示文字颜色（placeholder、hint、辅助说明）
-  /// - 亮色模式：#9CA3AF (灰400)
+  /// - 亮色模式：#6B7280 (灰500，白底对比度约 4.8:1)
   /// - 暗黑模式：rgba(255,255,255,0.54)
   static Color textTertiary(BuildContext context) =>
       isDark(context)
           ? Colors.white.withValues(alpha: 0.54)
-          : const Color(0xFF9CA3AF);
+          : const Color(0xFF6B7280);
 
   /// 禁用文字颜色
   /// - 亮色模式：rgba(0,0,0,0.26)

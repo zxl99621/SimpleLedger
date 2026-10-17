@@ -34,6 +34,8 @@ class _SimpleAiPageState extends ConsumerState<SimpleAiPage> {
   /// 每次请求的序号；用户点“停止”或发起新请求后，旧请求的结果不再写回界面。
   int _requestSerial = 0;
 
+  bool _tabVisible = false;
+
   void _handlePendingFeature() {
     final pending = ref.read(aiPendingFeatureProvider);
     if (pending == null) return;
@@ -43,6 +45,22 @@ class _SimpleAiPageState extends ConsumerState<SimpleAiPage> {
       return;
     }
     _runFeature(pending);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // 页面常驻 IndexedStack；只在“从不可见变为可见”时触发首次引导/待处理功能，
+    // 避免每次 build 都注册 post-frame 回调。
+    final visible = TickerMode.valuesOf(context).enabled;
+    if (visible && !_tabVisible) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) return;
+        await _maybeShowGuide();
+        if (mounted) _handlePendingFeature();
+      });
+    }
+    _tabVisible = visible;
   }
 
   @override
@@ -221,16 +239,6 @@ class _SimpleAiPageState extends ConsumerState<SimpleAiPage> {
 
   @override
   Widget build(BuildContext context) {
-    // Tab 页面在 IndexedStack 中始终构建，用 TickerMode 判断当前是否可见，
-    // 避免首次引导在用户还没进入 AI 页时就弹出。
-    if (TickerMode.valuesOf(context).enabled) {
-      WidgetsBinding.instance.addPostFrameCallback((_) async {
-        if (!mounted) return;
-        await _maybeShowGuide();
-        if (mounted) _handlePendingFeature();
-      });
-    }
-
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final ink = isDark ? const Color(0xFFECEFEA) : BeeTheme.ink;

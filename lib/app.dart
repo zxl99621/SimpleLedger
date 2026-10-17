@@ -87,6 +87,10 @@ class _BeeAppState extends ConsumerState<BeeApp>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _setupAppLinkListener();
       _setupQuickActions();
+      // 首帧后主动预热小组件：首次启动时 currentLedgerIdProvider 可能没有发生
+      // “变化”，ProviderObserver 不会触发，导致用户添加组件时还没有渲染图、
+      // 只能先显示占位图，等下一次前台恢复才刷新。
+      _updateWidget(warmUpAll: true);
     });
   }
 
@@ -509,7 +513,7 @@ class _BeeAppState extends ConsumerState<BeeApp>
     }
   }
 
-  Future<void> _updateWidget() async {
+  Future<void> _updateWidget({bool warmUpAll = false}) async {
     try {
       final repository = ref.read(repositoryProvider);
       final ledgerId = ref.read(currentLedgerIdProvider);
@@ -528,8 +532,12 @@ class _BeeAppState extends ConsumerState<BeeApp>
         explicitLocale: ref.read(languageProvider),
         redForIncome: redForIncome,
         baseCurrency: baseCurrency,
+        warmUpAllSpecs: warmUpAll,
       );
-      logger.info('App', 'App恢复前台，小组件数据已更新');
+      logger.info(
+        'App',
+        warmUpAll ? '启动时小组件目录已预热' : 'App恢复前台，小组件数据已更新',
+      );
     } catch (e) {
       logger.warning('App', '更新小组件失败: $e');
     }

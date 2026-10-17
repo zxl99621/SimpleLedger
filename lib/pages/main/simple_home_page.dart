@@ -95,6 +95,23 @@ class SimpleHomePage extends ConsumerWidget {
                 muted: muted,
                 hairline: hairline,
               ),
+              if (totalsAsync.hasError ||
+                  balanceAsync.hasError ||
+                  recentAsync.hasError)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton(
+                    onPressed: () {
+                      ref.invalidate(monthlyTotalsProvider(monthParams));
+                      ref.invalidate(currentBalanceProvider(ledgerId));
+                      ref.invalidate(simpleRecentTransactionsProvider);
+                    },
+                    child: Text(
+                      '数据加载失败，点此重试',
+                      style: TextStyle(fontSize: 12, color: brick),
+                    ),
+                  ),
+                ),
               const SizedBox(height: 34),
               _SectionTitle(title: '最近交易', count: transactions.length, ink: ink, muted: muted),
               const SizedBox(height: 6),
@@ -233,14 +250,20 @@ class _TotalAssetBlock extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 6),
-              Text(
-                value == null ? '—' : _formatAmount(value!),
-                style: const TextStyle(
-                  fontSize: 34,
-                  height: 1.05,
-                  fontWeight: FontWeight.w600,
-                  color: foreground,
-                  fontFeatures: [FontFeature.tabularFigures()],
+              Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    value == null ? '—' : _formatAmount(value!),
+                    style: const TextStyle(
+                      fontSize: 34,
+                      height: 1.05,
+                      fontWeight: FontWeight.w600,
+                      color: foreground,
+                      fontFeatures: [FontFeature.tabularFigures()],
+                    ),
+                  ),
                 ),
               ),
             ],

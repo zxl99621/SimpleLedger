@@ -36,53 +36,11 @@ void main() {
   });
 
   group('WidgetSpec.catalog', () {
-    test('覆盖全部合法 (type,size) 组合,14 条', () {
-      expect(WidgetSpec.catalog.length, 14);
-
-      const expected = <(HWType, HWSize)>{
-        (HWType.glance, HWSize.small),
-        (HWType.glance, HWSize.medium),
-        (HWType.netWorth, HWSize.small),
-        (HWType.netWorth, HWSize.medium),
-        (HWType.netWorth, HWSize.large),
-        (HWType.quickAdd, HWSize.small),
-        (HWType.quickAdd, HWSize.medium),
-        (HWType.budget, HWSize.small),
-        (HWType.budget, HWSize.medium),
-        (HWType.recent, HWSize.medium),
-        (HWType.recent, HWSize.large),
-        (HWType.dashboard, HWSize.large),
-        (HWType.consumptionRhythm, HWSize.medium),
-        (HWType.beeTrail, HWSize.small),
-      };
-      final actual = WidgetSpec.catalog.map((s) => (s.type, s.size)).toSet();
-      expect(actual, expected);
-    });
-
-    test('dashboard 只有大尺寸', () {
-      final dashboardSpecs =
-          WidgetSpec.catalog.where((s) => s.type == HWType.dashboard);
-      expect(dashboardSpecs, [WidgetSpec.dashboardLarge]);
-    });
-
-    test('recent 只有中/大,没有小', () {
-      final recentSizes = WidgetSpec.catalog
-          .where((s) => s.type == HWType.recent)
-          .map((s) => s.size)
-          .toSet();
-      expect(recentSizes, {HWSize.medium, HWSize.large});
-    });
-
-    test('消费节奏仅中号、记账连续蜂迹仅小号', () {
+    test('极简版只保留 4×2 月支出组件', () {
+      expect(WidgetSpec.catalog, [WidgetSpec.glanceMedium]);
       expect(
-        WidgetSpec.catalog
-            .where((s) => s.type == HWType.consumptionRhythm)
-            .toList(),
-        [WidgetSpec.consumptionRhythmMedium],
-      );
-      expect(
-        WidgetSpec.catalog.where((s) => s.type == HWType.beeTrail).toList(),
-        [WidgetSpec.beeTrailSmall],
+        WidgetSpec.catalog.map((s) => (s.type, s.size)).toList(),
+        [(HWType.glance, HWSize.medium)],
       );
     });
   });
@@ -112,12 +70,12 @@ void main() {
       expect(WidgetSpec.matchInstalled(info), isNull);
     });
 
-    test('iOS glance systemSmall(补全新增)匹配 glanceSmall', () {
+    test('目录裁剪后不再匹配 glanceSmall', () {
       final info = HomeWidgetInfo(
         iOSKind: 'BeeCountWidget',
         iOSFamily: 'systemSmall',
       );
-      expect(WidgetSpec.matchInstalled(info), WidgetSpec.glanceSmall);
+      expect(WidgetSpec.matchInstalled(info), isNull);
     });
 
     test('Android class name 匹配 glance-medium', () {
@@ -149,26 +107,6 @@ void main() {
           androidWidgetId: 1,
         );
         expect(WidgetSpec.matchInstalled(info), WidgetSpec.glanceMedium);
-      });
-
-      test('前导点短名 matchInstalledAll 返回该类型全部尺寸(含子类入口)', () {
-        final main = HomeWidgetInfo(
-          androidClassName: '.BeeCountNetWorthWidgetProvider',
-          androidWidgetId: 2,
-        );
-        expect(
-          WidgetSpec.matchInstalledAll(main),
-          containsAll([
-            WidgetSpec.netWorthSmall,
-            WidgetSpec.netWorthMedium,
-            WidgetSpec.netWorthLarge,
-          ]),
-        );
-        final sized = HomeWidgetInfo(
-          androidClassName: '.BeeCountNetWorthLargeWidgetProvider',
-          androidWidgetId: 3,
-        );
-        expect(WidgetSpec.matchInstalledAll(sized), isNotEmpty);
       });
 
       test('短名后缀比对有点号边界,不误匹配前缀撞名类', () {
