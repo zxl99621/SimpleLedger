@@ -30,7 +30,31 @@ jobs:
 
       - name: Analyze
         # 只让真正的 error 使 CI 失败；warning/info 不作为门禁。
-        run: flutter analyze --no-fatal-infos --no-fatal-warnings lib
+        shell: bash
+        run: |
+          set -o pipefail
+          flutter --version
+          flutter analyze --no-fatal-infos --no-fatal-warnings lib 2>&1 | tee analyze.log
+          code=$?
+          if [ $code -ne 0 ]; then
+            if grep -q 'error - ' analyze.log; then
+              grep 'error - ' analyze.log | head -20 | while IFS= read -r line; do
+                echo "::error::$line"
+              done
+            else
+              tail -30 analyze.log | while IFS= read -r line; do
+                echo "::error::$line"
+              done
+            fi
+            exit $code
+          fi
+
+      - name: Upload analyze log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: analyze-log
+          path: analyze.log
 
       - name: Test
         run: flutter test --no-pub
