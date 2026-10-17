@@ -1,13 +1,9 @@
 import 'dart:async';
-import 'dart:convert';
-import 'dart:io';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/repositories/base_repository.dart';
 import '../../providers/database_providers.dart';
-import '../automation/auto_billing_service.dart';
 import '../billing/post_processor.dart';
 import '../system/logger_service.dart';
 import '../../l10n/app_localizations.dart';
@@ -175,18 +171,6 @@ class AppLinkService {
   /// 深链文案按应用内语言取（container 由 main 注入）。
   AppLocalizations get _l10n =>
       resolveAppLocalizations(_container.read(languageProvider));
-  late final AutoBillingService _autoBillingService;
-
-  /// iOS AppIntents 事件通道（用于接收快捷指令传入的图片路径）
-  static const EventChannel _eventChannel =
-      EventChannel('com.beecount.app_intents/events');
-
-  /// iOS AppIntents 方法通道(回调 Swift,告知后台处理已完成可以放 perform 返回)
-  static const MethodChannel _methodChannel =
-      MethodChannel('com.beecount.app_intents');
-
-  /// AppIntents 事件订阅
-  StreamSubscription<dynamic>? _appIntentSubscription;
 
   /// 导航回调，由外部设置
   void Function(AppLinkAction action, {AddTransactionParams? params})? onNavigate;
@@ -194,83 +178,7 @@ class AppLinkService {
   /// Toast 回调，由外部设置
   void Function(String message)? onShowToast;
 
-  AppLinkService(this._container) {
-    _autoBillingService = AutoBillingService(_container);
-    _initAppIntentsListener();
-  }
-
-  /// 初始化 iOS AppIntents 监听器
-  void _initAppIntentsListener() {
-    if (!Platform.isIOS) return;
-
-    logger.info('AppLink', '初始化 AppIntents 监听器');
-
-    _appIntentSubscription = _eventChannel.receiveBroadcastStream().listen(
-      (event) {
-        if (event is String) {
-          logger.info('AppLink', '收到 AppIntent 事件: $event');
-          _handleAppIntent(event);
-        }
-      },
-      onError: (error) {
-        logger.error('AppLink', 'AppIntent 事件监听错误', error);
-      },
-      onDone: () {
-        logger.info('AppLink', 'AppIntent 事件流关闭');
-      },
-    );
-  }
-
-  /// 处理 AppIntent 事件
-  Future<void> _handleAppIntent(String event) async {
-    try {
-      final data = jsonDecode(event) as Map<String, dynamic>;
-      final action = data['action'] as String?;
-
-      logger.info('AppLink', 'AppIntent action: $action');
-
-      if (action == 'auto-billing') {
-        final imagePath = data['imagePath'] as String?;
-        if (imagePath != null && imagePath.isNotEmpty) {
-          logger.info('AppLink', '处理快捷指令图片: $imagePath');
-          await _handleScreenshotBilling(imagePath,
-              recognitionImagePath: data['recognitionImagePath'] as String?);
-        } else {
-          logger.warning('AppLink', 'auto-billing 未提供图片路径');
-        }
-      } else {
-        logger.warning('AppLink', '未知的 AppIntent action: $action');
-      }
-    } catch (e, st) {
-      logger.error('AppLink', '解析 AppIntent 事件失败', e, st);
-    }
-  }
-
-  /// 处理快捷指令截图记账
-  Future<void> _handleScreenshotBilling(String imagePath,
-      {String? recognitionImagePath}) async {
-    try {
-      await _autoBillingService.processScreenshot(
-        imagePath,
-        recognitionImagePath: recognitionImagePath,
-        showNotification: true,
-      );
-      logger.info('AppLink', '快捷指令截图记账完成');
-    } catch (e, st) {
-      logger.error('AppLink', '快捷指令截图记账失败', e, st);
-    } finally {
-      // iOS: 通知 Swift AppIntent 处理完成,可以放 perform() 返回了。
-      // 不发这个信号的话 perform() 会一直 await(直到 25s 超时),iOS 在 30s
-      // 后台窗口内会 kill 进程,「成功」通知发不出去。
-      if (Platform.isIOS) {
-        try {
-          await _methodChannel.invokeMethod('notifyBillingComplete');
-        } catch (e) {
-          logger.warning('AppLink', '通知 Swift 完成信号失败: $e');
-        }
-      }
-    }
-  }
+  AppLinkService(this._container);
 
   /// 解析 URI 获取动作类型
   static AppLinkAction parseAction(Uri uri) {
@@ -358,8 +266,7 @@ class AppLinkService {
         return AppLinkResult.success(message: _l10n.appLinkOpenPage(page));
 
       case AppLinkAction.autoBilling:
-        // 兼容旧版
-        return await _handleAutoBilling(queryParams);
+        return AppLinkResult.failure('自动记账已移除，请使用记账页面');
 
       case AppLinkAction.quickBilling:
         // 兼容旧版，等同于图片记账
@@ -522,31 +429,6 @@ class AppLinkService {
     }
   }
 
-  /// 处理旧版文本自动记账
-  Future<AppLinkResult> _handleAutoBilling(Map<String, String> params) async {
-    String? text = params['text'];
-
-    if (text != null && text.isNotEmpty) {
-      // 将逗号还原为换行符
-      text = text.replaceAll(',', '\n');
-      logger.info('AppLink', '从URL参数读取文本，长度: ${text.length}');
-
-      try {
-        await _autoBillingService.processText(
-          text,
-          showNotification: true,
-        );
-        return AppLinkResult.success(message: _l10n.appLinkTextDone);
-      } catch (e, st) {
-        logger.error('AppLink', '文本记账失败', e, st);
-        return AppLinkResult.failure(_l10n.appLinkTextFailed(e.toString()));
-      }
-    } else {
-      logger.warning('AppLink', 'auto-billing 未提供文本');
-      return AppLinkResult.failure(_l10n.appLinkNoText);
-    }
-  }
-
   /// 根据名称查找分类ID
   Future<int?> _findCategoryId(BaseRepository repo, String name, String kind) async {
     final categories = kind == 'income'
@@ -586,11 +468,7 @@ class AppLinkService {
   }
 
   /// 释放资源
-  void dispose() {
-    _appIntentSubscription?.cancel();
-    _appIntentSubscription = null;
-    _autoBillingService.dispose();
-  }
+  void dispose() {}
 }
 
 /// 生成 AppLink URL

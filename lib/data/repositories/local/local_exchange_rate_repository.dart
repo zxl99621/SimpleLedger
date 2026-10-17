@@ -1,7 +1,7 @@
 import 'package:drift/drift.dart' as d;
 import 'package:uuid/uuid.dart';
 
-import '../../../cloud/sync/change_tracker.dart';
+import '../../change_tracker.dart';
 import '../../db.dart';
 import '../exchange_rate_repository.dart';
 

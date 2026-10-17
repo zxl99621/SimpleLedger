@@ -2,160 +2,46 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
-import '../ai/core/prompt_builder.dart';
-import '../ai/providers/ai_provider_config.dart';
-import '../ai/providers/ai_provider_manager.dart';
-import '../l10n/app_localizations.dart';
+import '../pages/transaction/transaction_editor_page.dart';
 import '../providers.dart';
-import '../providers/ai_chat_providers.dart';
-import '../services/ai/billing_image_service.dart';
-import '../services/attachment_service.dart';
-import '../services/billing/post_processor.dart';
-import '../services/data/tag_seed_service.dart';
-import '../widgets/ui/ui.dart';
+import '../services/image/billing_image_service.dart';
 
-/// 图片记账入口(相册/相机)。瘦身后:UI 流程 + 兜底,业务调 [AiBookkeeper]。
+/// 拍照/相册快捷记账：只负责选图，然后打开记账编辑器。
+///
+/// 图片会挂为待上传附件，金额面板再用简单 OCR 自动回填；不再走旧版
+/// Agent 自动入库，避免“没确认就生成账单”。
 class ImageBillingHelper {
-  /// 从相册选择图片并自动记账
   static Future<void> pickImageForBilling(
     BuildContext context,
     WidgetRef ref,
   ) =>
-      _processImageBilling(context, ref, ImageSource.gallery);
+      _openEditorWithImage(context, ref, ImageSource.gallery);
 
-  /// 打开相机拍照并自动记账
   static Future<void> openCameraForBilling(
     BuildContext context,
     WidgetRef ref,
   ) =>
-      _processImageBilling(context, ref, ImageSource.camera);
+      _openEditorWithImage(context, ref, ImageSource.camera);
 
-  static Future<void> _processImageBilling(
+  static Future<void> _openEditorWithImage(
     BuildContext context,
     WidgetRef ref,
     ImageSource source,
   ) async {
-    final l10n = AppLocalizations.of(context);
+    final keepOriginal = await ref.read(attachmentKeepOriginalProvider.future);
     final imageService = BillingImageService();
-    BillingImageFiles? images;
+    final file = await imageService.pickImage(source, keepOriginal: keepOriginal);
+    if (file == null || !context.mounted) return;
 
-    try {
-      // 1. 选图
-      final keepOriginal =
-          await ref.read(attachmentKeepOriginalProvider.future);
-      final imageFile =
-          await imageService.pickImage(source, keepOriginal: keepOriginal);
-      if (imageFile == null) return;
-      if (!context.mounted) return;
-
-      // 2. 显示 loading
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => Center(
-          child: Card(
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const CircularProgressIndicator(),
-                  const SizedBox(height: 16),
-                  Text(l10n.aiOcrRecognizing),
-                ],
-              ),
-            ),
-          ),
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => TransactionEditorPage(
+          initialKind: 'expense',
+          quickAdd: true,
+          initialImageFile: file,
         ),
-      );
-
-      // 3. AI vision 兜底
-      if (!await AIProviderManager.isCapabilityConfigured(
-          AICapabilityType.vision)) {
-        if (!context.mounted) return;
-        Navigator.of(context).pop();
-        showToast(context, l10n.aiNotConfiguredHint);
-        return;
-      }
-
-      // 4. 当前账本
-      final currentLedger = await ref.read(currentLedgerProvider.future);
-      if (currentLedger == null) {
-        if (!context.mounted) return;
-        Navigator.of(context).pop();
-        showToast(context, l10n.aiOcrNoLedger);
-        return;
-      }
-
-      // 5. 委托 AiBookkeeper(自动查 categories/accounts + 多笔保存)
-      final autoAddAttachment = ref.read(smartBillingAutoAttachmentProvider);
-      final billingTypes = <String>[
-        source == ImageSource.gallery
-            ? TagSeedService.billingTypeImage
-            : TagSeedService.billingTypeCamera,
-        TagSeedService.billingTypeAi,
-      ];
-
-      final attachmentService = ref.read(attachmentServiceProvider);
-      final bookkeeper = ref.read(aiBookkeeperProvider);
-      images =
-          await imageService.prepare(imageFile, keepOriginal: keepOriginal);
-      final result = await bookkeeper.fromImage(
-        image: images.recognition,
-        ledgerId: currentLedger.id,
-        billGuard: PromptBuilder.billGuardForImage,
-        billingTypes: billingTypes,
-        l10n: l10n,
-        // 多笔时每笔都挂同一张原图,方便后续从任意一笔溯源
-        onSaved: autoAddAttachment
-            ? (txId, _) => attachmentService.saveAttachment(
-                  transactionId: txId,
-                  sourceFile: images!.attachment,
-                  index: 0,
-                )
-            : null,
-      );
-
-      if (!context.mounted) return;
-      Navigator.of(context).pop();
-
-      // 6. 提示用户
-      if (!result.success) {
-        // failedCount>0:提取到账单但入库失败(真·错误);否则=AI 判定不是账单/没提取到
-        showToast(context,
-            result.failedCount > 0 ? l10n.aiOcrCheckLog : l10n.aiOcrNoBill);
-        return;
-      }
-
-      await PostProcessor.run(
-        ref,
-        ledgerId: currentLedger.id,
-        tags: true,
-        attachments: autoAddAttachment,
-      );
-      if (!context.mounted) return;
-
-      final firstBill = result.firstBill!;
-      final typeText = firstBill.type?.name == 'income'
-          ? l10n.aiTypeIncome
-          : l10n.aiTypeExpense;
-      final amountStr = result.totalAbsAmount.toStringAsFixed(2);
-      final toastText = result.isMulti
-          ? '${l10n.aiOcrSuccess(typeText, amountStr)} × ${result.savedCount}'
-          : l10n.aiOcrSuccess(typeText, amountStr);
-      // 多币种降级提示(A5):缺汇率已按 1:1 暂记,指路统计页补折算
-      showToast(
-        context,
-        result.unconvertedCurrencies.isEmpty
-            ? toastText
-            : '$toastText\n${l10n.aiBillingRateMissingHint(result.unconvertedCurrencies.join('、'))}',
-      );
-    } catch (e) {
-      if (!context.mounted) return;
-      Navigator.of(context).popUntil((route) => route.isFirst);
-      showToast(context, l10n.aiOcrFailed(e.toString()));
-    } finally {
-      await images?.dispose();
-    }
+      ),
+    );
   }
 }

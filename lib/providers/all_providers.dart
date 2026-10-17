@@ -12,20 +12,14 @@ export 'statistics_providers.dart';
 // 多币种相关
 export 'currency_providers.dart';
 
-// 同步相关
-export 'sync_providers.dart';
+// 本地刷新信号（原云同步栈的一部分，现已独立）
+export 'refresh_providers.dart';
 
 // UI状态相关
 export 'ui_state_providers.dart';
 
 // 导入导出相关
 export 'import_export_providers.dart';
-
-// 更新相关
-export 'update_providers.dart';
-
-// 提醒相关
-export 'reminder_providers.dart';
 
 // 语言相关
 export 'language_provider.dart';

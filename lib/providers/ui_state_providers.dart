@@ -1,16 +1,13 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../ai/providers/ai_provider_manager.dart';
 import 'database_providers.dart';
 import 'theme_providers.dart';
 import 'currency_providers.dart';
 import 'font_scale_provider.dart';
-import 'update_providers.dart';
 import 'smart_billing_providers.dart';
 import '../data/db.dart';
 import '../services/system/logger_service.dart';
-import '../ai/providers/ai_constants.dart';
 import '../services/platform/app_link_service.dart';
 import 'security_providers.dart';
 
@@ -50,8 +47,6 @@ final selectedViewProvider = StateProvider<String>((ref) => 'month');
 final checkUpdateLoadingProvider = StateProvider<bool>((ref) => false);
 
 // 下载进度状态
-final downloadProgressProvider = StateProvider<UpdateProgress?>((ref) => null);
-
 // ---------- Analytics 提示持久化（本地 SharedPreferences） ----------
 final analyticsHeaderHintDismissedProvider =
     FutureProvider.autoDispose<bool>((ref) async {
@@ -275,28 +270,4 @@ final defaultAccountSetterProvider = Provider<DefaultAccountSetter>((ref) {
   return DefaultAccountSetter();
 });
 
-// AI小助手开关状态持久化
-final aiAssistantEnabledProvider =
-    FutureProvider.autoDispose<bool>((ref) async {
-  final prefs = await SharedPreferences.getInstance();
-  final link = ref.keepAlive();
-  ref.onDispose(() => link.close());
-  return prefs.getBool(AIConstants.keyAiBillExtractionEnabled) ?? true; // 默认开启
-});
-
-class AIAssistantSetter {
-  Future<void> setEnabled(bool enabled) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(AIConstants.keyAiBillExtractionEnabled, enabled);
-    // 同 ai_config_providers 的 _saveToPrefs —— 让 "AI 助手开关"
-    // 改变也能 push 到 server,跨设备和 web 拿到同样的值。
-    try {
-      AIProviderManager.onConfigChanged?.call();
-    } catch (_) {}
-  }
-}
-
-final aiAssistantSetterProvider = Provider<AIAssistantSetter>((ref) {
-  return AIAssistantSetter();
-});
 

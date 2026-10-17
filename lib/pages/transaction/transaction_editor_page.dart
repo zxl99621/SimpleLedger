@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:drift/drift.dart' as d;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -41,6 +43,7 @@ class TransactionEditorPage extends ConsumerStatefulWidget {
   // v30 多币种编辑回显(推隐含汇率用)
   final String? initialCurrencyCode;
   final double? initialNativeAmount;
+  final File? initialImageFile;
 
   const TransactionEditorPage({
     super.key,
@@ -59,6 +62,7 @@ class TransactionEditorPage extends ConsumerStatefulWidget {
     this.initialExcludeFromBudget = false,
     this.initialCurrencyCode,
     this.initialNativeAmount,
+    this.initialImageFile,
   });
 
   /// Reuse business fields only; saving takes the normal creation path.
@@ -414,6 +418,7 @@ class _TransactionEditorPageState extends ConsumerState<TransactionEditorPage>
         initialExcludeFromBudget: widget.initialExcludeFromBudget,
         initialCurrencyCode: widget.initialCurrencyCode,
         initialNativeAmount: widget.initialNativeAmount,
+        initialImageFile: widget.initialImageFile,
         allowContinueAdding: widget.quickAdd &&
             !widget.isCopy &&
             widget.editingTransactionId == null &&

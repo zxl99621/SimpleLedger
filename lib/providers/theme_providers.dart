@@ -105,23 +105,6 @@ Future<void> _persistAndPushPrimary(
       // Silently fail
     }
 
-    // 推送主题色到 server，让 web 端通过 WS profile_change 自动跟随。
-    // 同步方向单向：mobile → server → web；web 本地改色不回推。
-    //
-    // 这个值本身就是 server 推下来的时候不能再推回去 —— 否则和对端在途的
-    // push 交替触发,颜色无限横跳(见 [runApplyingFromServer])。
-    if (fromServer) return;
-    try {
-      final cloudProvider =
-          await ref.read(beecountCloudProviderInstance.future);
-      if (cloudProvider == null) return;
-      final hex = _colorToHex(next);
-      await cloudProvider.updateMyProfileThemeColor(hex: hex);
-      logger.info('theme_providers', 'primary color pushed to server: $hex');
-    } catch (e) {
-      logger.warning(
-          'theme_providers', 'push primary color failed (non-blocking): $e');
-    }
   }
 }
 
@@ -196,15 +179,6 @@ void Function() beginThemePush() {
 }
 
 /// Flutter [Color] → `#RRGGBB`。忽略 alpha，server 只存 6 位 hex。
-String _colorToHex(Color color) {
-  final r = (color.r * 255).toInt() & 0xff;
-  final g = (color.g * 255).toInt() & 0xff;
-  final b = (color.b * 255).toInt() & 0xff;
-  return '#${r.toRadixString(16).padLeft(2, '0')}'
-          '${g.toRadixString(16).padLeft(2, '0')}'
-          '${b.toRadixString(16).padLeft(2, '0')}'
-      .toUpperCase();
-}
 
 // 隐私模式持久化初始化：
 // - 启动时加载保存的隐私模式状态
@@ -544,44 +518,7 @@ void applyHeaderSkinWith(ProviderReader read, String skinId) {
 /// appearance 先落地,对端会在「新皮肤 + server 上还是旧颜色」的组合下走一遍
 /// apply,颜色就会先跳旧色再跳回绑定色 —— 用户看到的就是两个主题色之间闪。
 /// 这里串行 await 保证对端收到 header_skin 变更时,server 上的颜色已经对齐。
-void _pushAppearanceToCloud(Ref ref) {
-  // 同步开窗口:皮肤和颜色都还没落到 server 的这段时间里,下行拿到的是旧值,
-  // 采信它就会闪一下(见 [beginThemePush])。
-  final endPush = beginThemePush();
-  unawaited(() async {
-    try {
-      final cloudProvider =
-          await ref.read(beecountCloudProviderInstance.future);
-      if (cloudProvider == null) return;
-      final bound = boundPrimaryOf(ref.read(headerSkinProvider));
-      if (bound != null) {
-        final hex = _colorToHex(bound);
-        await cloudProvider.updateMyProfileThemeColor(hex: hex);
-        logger.info('theme_providers',
-            'bound skin color pushed before appearance: $hex');
-      }
-      final appearance = <String, dynamic>{
-        'header_decoration_style': ref.read(headerDecorationStyleProvider),
-        'compact_amount': ref.read(compactAmountProvider),
-        'skin_animation': ref.read(skinAnimationEnabledProvider),
-        'show_transaction_time': ref.read(showTransactionTimeProvider),
-        'header_skin': ref.read(headerSkinProvider),
-        'note_display_mode': ref.read(noteDisplayModeProvider),
-        'note_history_scope': ref.read(noteHistoryScopeProvider).name,
-        'note_history_sort': ref.read(noteHistorySortProvider).name,
-        'note_history_limit': ref.read(noteHistoryLimitProvider),
-      };
-      await cloudProvider.updateMyProfileAppearance(appearance: appearance);
-      logger.info(
-          'theme_providers', 'pushed appearance to server: $appearance');
-    } catch (e, st) {
-      logger.warning(
-          'theme_providers', 'push appearance failed (non-blocking): $e', st);
-    } finally {
-      endPush();
-    }
-  }());
-}
+void _pushAppearanceToCloud(Ref ref) {}
 
 // 收支颜色方案Provider（默认红色收入、绿色支出）
 // true = 红色收入、绿色支出
@@ -617,24 +554,6 @@ final incomeExpenseColorSchemeInitProvider = FutureProvider<void>((ref) async {
     } catch (e) {
       // Silently fail
     }
-
-    // BeeCount Cloud 模式下把配色偏好推给 server；web 端会通过 WS
-    // profile_change 事件实时刷新。非 Cloud 模式 provider 返回 null，跳过。
-    unawaited(() async {
-      try {
-        final cloudProvider =
-            await ref.read(beecountCloudProviderInstance.future);
-        if (cloudProvider == null) return;
-        await cloudProvider.updateMyProfileIncomeColorScheme(
-          incomeIsRed: next,
-        );
-        logger.info('theme_providers',
-            'income color scheme pushed to server: incomeIsRed=$next');
-      } catch (e) {
-        logger.warning('theme_providers',
-            'push income color scheme failed (non-blocking): $e');
-      }
-    }());
   });
 });
 
@@ -662,19 +581,4 @@ final displayNameInitProvider = FutureProvider<void>((ref) async {
 /// 把显示名推给 server 的 /profile/me(仅 BeeCount Cloud 模式)。非 cloud 模式
 /// provider 返回 null 直接跳过;空串不推(v1 不支持清空,且包层对空串会 throw)。
 /// fire-and-forget,失败只打 warning。
-void _pushDisplayNameToCloud(Ref ref, String name) {
-  final trimmed = name.trim();
-  if (trimmed.isEmpty) return;
-  unawaited(() async {
-    try {
-      final cloudProvider =
-          await ref.read(beecountCloudProviderInstance.future);
-      if (cloudProvider == null) return;
-      await cloudProvider.updateMyProfileDisplayName(displayName: trimmed);
-      logger.info('theme_providers', 'display name pushed to server: $trimmed');
-    } catch (e, st) {
-      logger.warning('theme_providers',
-          'push display name failed (non-blocking): $e', st);
-    }
-  }());
-}
+void _pushDisplayNameToCloud(Ref ref, String name) {}

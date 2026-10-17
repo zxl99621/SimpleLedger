@@ -4,11 +4,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:decimal/decimal.dart';
-import 'package:flutter_cloud_sync/flutter_cloud_sync.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:beecount/widgets/ui/wheel_date_picker.dart';
 import '../../data/db.dart';
-import '../../providers/shared_ledger_providers.dart';
 import '../../styles/tokens.dart';
 import '../../l10n/app_localizations.dart';
 import '../../services/data/note_history_service.dart';
@@ -19,7 +17,6 @@ import '../../utils/ui_scale_extensions.dart';
 import '../../pages/tag/widgets/tag_selector.dart';
 import 'note_picker_dialog.dart';
 import 'account_selector.dart';
-import '../ui/toast.dart';
 import 'tag_chip.dart';
 import '../../pages/attachment/attachment_preview_page.dart';
 import '../../ai/simple/ai_engine.dart';
@@ -28,162 +25,6 @@ import '../../ai/simple/ai_service.dart';
 
 /// 共享账本 tx 作者信息(创建人 + 最后编辑人)— 编辑器底部 sheet 用。
 /// editingTransactionId=null(新建 tx)或非共享账本 → 返 null,widget 不渲染。
-class _TxAuthorInfo {
-  const _TxAuthorInfo({
-    required this.creatorUserId,
-    required this.lastEditedByUserId,
-    required this.currentUserId,
-    required this.members,
-  });
-
-  final String? creatorUserId;
-  final String? lastEditedByUserId;
-  final String? currentUserId;
-  final List<BeeCountCloudLedgerMember> members;
-
-  BeeCountCloudLedgerMember? memberOf(String? userId) {
-    if (userId == null || userId.isEmpty) return null;
-    for (final m in members) {
-      if (m.userId == userId) return m;
-    }
-    return null;
-  }
-}
-
-final _txAuthorInfoProvider =
-    FutureProvider.autoDispose.family<_TxAuthorInfo?, int>((ref, txId) async {
-  final repo = ref.watch(repositoryProvider);
-  final tx = await repo.getTransactionById(txId);
-  if (tx == null) return null;
-  final ledger = await repo.getLedgerById(tx.ledgerId);
-  if (ledger == null || !ledger.isShared) return null;
-  final ledgerSyncId = ledger.syncId;
-  if (ledgerSyncId == null || ledgerSyncId.isEmpty) return null;
-  if (tx.createdByUserId == null && tx.lastEditedByUserId == null) return null;
-
-  final cloud = await ref.watch(beecountCloudProviderInstance.future);
-  if (cloud == null) return null;
-  ref.watch(sharedResourceRefreshProvider);
-  final me = await cloud.auth.currentUser;
-  final members = await cloud.listMembers(ledgerId: ledgerSyncId);
-  return _TxAuthorInfo(
-    creatorUserId: tx.createdByUserId,
-    lastEditedByUserId: tx.lastEditedByUserId,
-    currentUserId: me?.id,
-    members: members,
-  );
-});
-
-/// 紧凑头像组 — UX 规则(用户指定):
-///   - 创建人 != 编辑人:展示两个头像(long-press tooltip 区分"创建" / "最后编辑")
-///   - 创建人 == 编辑人 == 自己:不展示(自己的 tx 看自己头像无意义)
-///   - 创建人 == 编辑人 != 自己:展示一个头像(long-press tooltip "X 创建并编辑")
-class _TxAuthorAvatars extends ConsumerWidget {
-  const _TxAuthorAvatars({required this.editingTransactionId});
-
-  final int editingTransactionId;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final l10n = AppLocalizations.of(context);
-    final infoAsync = ref.watch(_txAuthorInfoProvider(editingTransactionId));
-    final info = infoAsync.valueOrNull;
-    if (info == null) return const SizedBox.shrink();
-
-    final creatorId = info.creatorUserId;
-    final editorId = info.lastEditedByUserId;
-    final meId = info.currentUserId;
-    final sameUser = creatorId != null && creatorId == editorId;
-
-    // 单人(创建 == 编辑)且就是自己 → 整体不显示
-    if (sameUser && creatorId == meId) return const SizedBox.shrink();
-
-    final cloud = ref.watch(beecountCloudProviderInstance).valueOrNull;
-    final baseUrl = cloud?.baseUrl;
-
-    final widgets = <Widget>[];
-    if (sameUser) {
-      // 同一人(非自己):展示一个头像,tooltip 提示"创建并编辑"
-      widgets.add(_AvatarSlot(
-        member: info.memberOf(creatorId),
-        userIdFallback: creatorId,
-        baseUrl: baseUrl,
-        tooltipBuilder: (name) => l10n.sharedTxCreatedAndEditedBy(name),
-      ));
-    } else {
-      // 创建人 + 编辑人是两个人:两个头像都展示
-      if (creatorId != null) {
-        widgets.add(_AvatarSlot(
-          member: info.memberOf(creatorId),
-          userIdFallback: creatorId,
-          baseUrl: baseUrl,
-          tooltipBuilder: (name) => l10n.sharedTxCreatedBy(name),
-        ));
-      }
-      if (editorId != null && editorId != creatorId) {
-        if (widgets.isNotEmpty) widgets.add(const SizedBox(width: 4));
-        widgets.add(_AvatarSlot(
-          member: info.memberOf(editorId),
-          userIdFallback: editorId,
-          baseUrl: baseUrl,
-          tooltipBuilder: (name) => l10n.sharedTxEditedBy(name),
-        ));
-      }
-    }
-    if (widgets.isEmpty) return const SizedBox.shrink();
-    return Row(mainAxisSize: MainAxisSize.min, children: widgets);
-  }
-}
-
-/// 单个头像槽位 — 不管 member 是否查得到都返回一个 CircleAvatar(带 tooltip)。
-/// long-press 触发 Tooltip,tooltip 文案带角色("X 创建" / "X 最后编辑" / ...)。
-class _AvatarSlot extends StatelessWidget {
-  const _AvatarSlot({
-    required this.member,
-    required this.userIdFallback,
-    required this.baseUrl,
-    required this.tooltipBuilder,
-  });
-
-  final BeeCountCloudLedgerMember? member;
-  final String userIdFallback;
-  final String? baseUrl;
-  final String Function(String name) tooltipBuilder;
-
-  @override
-  Widget build(BuildContext context) {
-    final m = member;
-    final name = m != null
-        ? (m.displayName?.isNotEmpty == true
-            ? m.displayName!
-            : m.email.split('@').first)
-        : userIdFallback;
-    final letter = name.isNotEmpty ? name[0].toUpperCase() : '?';
-    final rel = m?.avatarUrl;
-    final base = baseUrl;
-    final absolute = (rel != null && rel.isNotEmpty)
-        ? (rel.startsWith('http') ? rel : (base != null ? '$base$rel' : null))
-        : null;
-    return Tooltip(
-      message: tooltipBuilder(name),
-      triggerMode: TooltipTriggerMode.longPress,
-      child: CircleAvatar(
-        radius: 11,
-        backgroundColor: BeeTokens.surfaceCapsule(context),
-        foregroundImage: absolute != null ? NetworkImage(absolute) : null,
-        child: Text(
-          letter,
-          style: TextStyle(
-            fontSize: 11,
-            color: BeeTokens.textSecondary(context),
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 typedef AmountEditorResult = ({
   double amount,
   bool continueAdding,
@@ -222,6 +63,9 @@ class AmountEditorSheet extends ConsumerStatefulWidget {
   final String? initialCurrencyCode;
   final double? initialNativeAmount;
 
+  /// 从相机/相册快捷入口带入的图片；挂为待上传附件并自动尝试简单 OCR。
+  final File? initialImageFile;
+
   const AmountEditorSheet({
     super.key,
     required this.categoryName,
@@ -242,6 +86,7 @@ class AmountEditorSheet extends ConsumerStatefulWidget {
     this.initialExcludeFromBudget = false,
     this.initialCurrencyCode,
     this.initialNativeAmount,
+    this.initialImageFile,
   });
 
   @override
@@ -284,10 +129,6 @@ class _AmountEditorSheetState extends ConsumerState<AmountEditorSheet> {
   bool _excludeFromBudget = false;
 
   // v30 交易级多币种(L7 自动探测 + L12 无账户手选)
-  String? _pickedCurrency; // 无账户时手选的币种;null = 本位币
-  String? _selectedAccountCurrency; // 所选账户的币种(异步查,null = 未选/未知)
-  String? _rateStr; // 本笔汇率(字符串);编辑模式初值=隐含汇率,用户可改
-  bool _rateManuallySet = false; // 手改/隐含汇率后不再被有效汇率覆盖
 
   @override
   void initState() {
@@ -297,18 +138,6 @@ class _AmountEditorSheetState extends ConsumerState<AmountEditorSheet> {
     _excludeFromBudget = widget.initialExcludeFromBudget;
     _selectedAccountId = widget.initialAccountId;
     _selectedTagIds = List.from(widget.initialTagIds ?? []);
-    _pickedCurrency = widget.initialCurrencyCode?.toUpperCase();
-    // 编辑外币交易:汇率行初值 = 该笔隐含汇率(nativeAmount / amount),
-    // 只改备注/分类时折算基准不漂移(01 §4.2)。
-    final initAmount = widget.initialAmount ?? 0;
-    final initNative = widget.initialNativeAmount;
-    if (initNative != null && initAmount > 0 && initNative != initAmount) {
-      _rateStr = (initNative / initAmount).toStringAsPrecision(6);
-      _rateManuallySet = true;
-    }
-    if (widget.initialAccountId != null) {
-      _loadAccountCurrency(widget.initialAccountId!);
-    }
     // 保留原始小数（最多两位），避免编辑已有记录时小数被截断为整数
     final init = widget.initialAmount ?? 0;
     final s = init.toStringAsFixed(2);
@@ -328,6 +157,14 @@ class _AmountEditorSheetState extends ConsumerState<AmountEditorSheet> {
 
     // 加载最近使用的备注
     _loadRecentNotes();
+
+    final initialImage = widget.initialImageFile;
+    if (initialImage != null) {
+      _pendingAttachments = [..._pendingAttachments, initialImage];
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _runOcr(initialImage);
+      });
+    }
   }
 
   @override
@@ -354,42 +191,9 @@ class _AmountEditorSheetState extends ConsumerState<AmountEditorSheet> {
     });
   }
 
-  Future<void> _loadAccountCurrency(int accountId) async {
-    final repo = ref.read(repositoryProvider);
-    // getAccountCurrencyByAnyId:正数查主表;负数是共享账本 Owner 资源的
-    // synthetic id(§7),查镜像表 —— 否则成员选 Owner 外币账户会被静默
-    // 解析成本位币(审查发现)。
-    final currency = await repo.getAccountCurrencyByAnyId(accountId);
-    if (!mounted) return;
-    setState(() {
-      _selectedAccountCurrency = currency;
-    });
-  }
+  /// 极简版单币种：交易币种恒等于账本本位币。
+  String _txCurrency() => ref.read(currentLedgerCurrencyProvider);
 
-  /// 交易币种(币种优先联动,第 6 条):手选币种 → 账户列表按它过滤,所选账户
-  /// 币种必然一致。有账户但其币种尚在异步加载时,fallback 手选币种(而非本位
-  /// 币,避免加载窗口内汇率行闪没)。
-  String _txCurrency() {
-    if (_selectedAccountId != null) {
-      return _selectedAccountCurrency ??
-          _pickedCurrency ??
-          ref.read(currentLedgerCurrencyProvider);
-    }
-    return _pickedCurrency ?? ref.read(currentLedgerCurrencyProvider);
-  }
-
-  /// 本笔汇率:手改/隐含 > 有效汇率(effectiveRatesForLedgerProvider)。
-  double? _currentRate() {
-    if (_rateManuallySet) return double.tryParse(_rateStr ?? '');
-    final rates = ref.read(effectiveRatesForLedgerProvider).valueOrNull;
-    final er = rates?[_txCurrency()];
-    return er == null ? null : double.tryParse(er.rate);
-  }
-
-  /// 外币且本地无该币种汇率时,自动拉一次(v30:记账页是汇率的新消费场景,
-  /// 用户可能从没进过资产页/汇率页 → exchange_rates 表为空;且手选币种不在
-  //// usedCurrencies 里,常规 refresh 不会带上它 → extraQuotes 显式传入)。
-  /// 同一币种只自动试一次,失败后由用户手填(L8 缺失阻断仍兜底)。
   void _append(String s) {
     setState(() {
       if (s == '.') {
@@ -431,23 +235,9 @@ class _AmountEditorSheetState extends ConsumerState<AmountEditorSheet> {
 
     setState(() => _isSubmitting = true);
 
-    // v30:折本位币快照。外币且汇率无效 → 阻断(L8)。
-    final txCurrency = _txCurrency();
-    final ledgerBase = ref.read(currentLedgerCurrencyProvider);
-    double? nativeAmount;
-    if (txCurrency == ledgerBase) {
-      nativeAmount = total.abs();
-    } else {
-      final rate = _currentRate();
-      if (rate == null || rate <= 0) {
-        if (mounted) {
-          setState(() => _isSubmitting = false);
-          showToast(context, AppLocalizations.of(context).txRateMissingHint);
-        }
-        return;
-      }
-      nativeAmount = total.abs() * rate;
-    }
+    // 单币种：交易币种即本位币，折本位币快照等于金额本身。
+    final txCurrency = ref.read(currentLedgerCurrencyProvider);
+    final double nativeAmount = total.abs();
 
     HapticFeedback.lightImpact();
     SystemSound.play(SystemSoundType.click);
@@ -697,9 +487,6 @@ class _AmountEditorSheetState extends ConsumerState<AmountEditorSheet> {
                 // 显示);右侧 = 金额表达式。新建 tx / 单人账本时左侧为空。
                 Row(
                   children: [
-                    if (widget.editingTransactionId != null)
-                      _TxAuthorAvatars(
-                          editingTransactionId: widget.editingTransactionId!),
                     const Spacer(),
                     if (_op != null) ...[
                       // 显示累加值
@@ -874,11 +661,7 @@ class _AmountEditorSheetState extends ConsumerState<AmountEditorSheet> {
                         onAccountSelected: (accountId) {
                           setState(() {
                             _selectedAccountId = accountId;
-                            _selectedAccountCurrency = null; // 异步刷新
                           });
-                          if (accountId != null) {
-                            _loadAccountCurrency(accountId);
-                          }
                         },
                       );
                     },

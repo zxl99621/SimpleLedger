@@ -21,7 +21,6 @@ import 'pages/auth/splash_page.dart';
 import 'pages/auth/simple_welcome_page.dart';
 import 'pages/auth/app_lock_screen.dart';
 import 'providers/security_providers.dart';
-import 'services/platform/image_share_handler_service.dart';
 import 'services/platform/app_link_service.dart';
 import 'services/system/logger_service.dart';
 import 'l10n/app_localizations.dart';
@@ -70,11 +69,6 @@ Future<void> main() async {
     await WidgetManager.registerCallback();
   } catch (e) {
     logger.warning('App', '小组件回调注册失败（可能在不支持的平台上运行）: $e');
-  }
-
-  // 初始化图片分享处理服务（Android专属）
-  if (Platform.isAndroid) {
-    _setupImageShareHandler(container);
   }
 
   // 启动 URL 监听（用于快捷指令/AppLink 自动记账）
@@ -141,24 +135,6 @@ class _WidgetUpdateObserver extends ProviderObserver {
     } catch (e) {
       logger.warning('App', '更新小组件失败（可能在不支持的平台上运行）: $e');
     }
-  }
-}
-
-/// 设置图片分享处理（Android专属）
-///
-/// 初始化 ImageShareHandlerService 以接收从相册或其他应用分享的图片
-/// 分享的图片会自动触发记账流程
-void _setupImageShareHandler(ProviderContainer container) {
-  try {
-    logger.info('App', '🖼️  [Android] 初始化图片分享处理服务...');
-
-    // 初始化服务（会自动设置MethodChannel监听器）
-    ImageShareHandlerService(container);
-
-    logger.info('App', '✅ [Android] 图片分享处理服务已启动');
-  } catch (e) {
-    logger.error('App', '❌ [Android] 图片分享处理服务初始化失败', e);
-    // 不抛出异常，避免影响应用启动
   }
 }
 

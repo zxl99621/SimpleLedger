@@ -1,7 +1,7 @@
 name: beecount
 description: "极简记账 - 本地优先的个人记账工具"
 publish_to: 'none'
-version: 1.0.1+2
+version: 1.1.0+3
 
 environment:
   sdk: ^3.6.0
@@ -22,7 +22,6 @@ dependencies:
   decimal: ^3.0.0
   fl_chart: ^0.68.0
   shared_preferences: ^2.3.2
-  connectivity_plus: ^6.1.0
   csv: ^5.0.2
   file_picker: ^8.1.2
   crypto: ^3.0.5
@@ -34,10 +33,6 @@ dependencies:
   http: ^1.2.2
   share_plus: ^12.0.1
   dio: ^5.4.3+1
-  flutter_local_notifications: ^17.2.2
-  timezone: ^0.9.4
-  flutter_list_view: ^1.1.29
-  visibility_detector: ^0.4.0+2
   reorderable_grid_view: ^2.2.8
   excel: ^4.0.6
   # 注:pub.dev 最新为 0.9.3,但其 environment.sdk 要求 Dart >=3.10.0 / Flutter
@@ -52,35 +47,13 @@ dependencies:
   gbk_codec: ^0.4.0
   app_links: ^6.4.1
   yaml: ^3.1.2
-  qr_flutter: ^4.1.0
-  gal: ^2.3.0
   archive: ^3.6.1
   # 本地 GGUF 推理（Android 专属插件，底层 llama.cpp）
   llama_flutter_android: ^0.2.6
   # API Key 加密存储（Android Keystore / EncryptedSharedPreferences）
   flutter_secure_storage: ^10.3.4
-  flutter_ai_kit:
-    path: packages/flutter_ai_kit
-  flutter_ai_kit_zhipu:
-    path: packages/flutter_ai_kit_zhipu
-  flutter_ai_kit_openai:
-    path: packages/flutter_ai_kit_openai
-  agentcore:
-    path: packages/agentcore
-  flutter_cloud_sync:
-    path: packages/flutter_cloud_sync
-  flutter_cloud_sync_supabase:
-    path: packages/flutter_cloud_sync_supabase
-  flutter_cloud_sync_webdav:
-    path: packages/flutter_cloud_sync_webdav
-  flutter_cloud_sync_icloud:
-    path: packages/flutter_cloud_sync_icloud
-  flutter_cloud_sync_s3:
-    path: packages/flutter_cloud_sync_s3
   quick_actions: ^1.1.0
   local_auth: ^2.3.0
-  country_flags: ^3.2.0
-  jovial_svg: ^1.1.29
 
 dev_dependencies:
   flutter_test:

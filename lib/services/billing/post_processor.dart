@@ -1,7 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../../providers.dart';
-import '../../cloud/sync/sync_engine.dart';
 import '../attachment_service.dart';
 import '../system/logger_service.dart';
 
@@ -90,125 +88,21 @@ class PostProcessor {
     logger.info('PostProcessor', '云端下载后刷新完成');
   }
 
-  // ============ 内部同步实现 ============
+  // ============ 内部刷新实现 ============
 
+  // 极简版没有云同步，只负责触发依赖这些 tick 的本地页面重算。
   static Future<void> _doSync(WidgetRef ref, int ledgerId) async {
-    final sync = ref.read(syncServiceProvider);
-    try {
-      sync.markLocalChanged(ledgerId: ledgerId);
-    } catch (_) {}
-
     ref.read(syncStatusRefreshProvider.notifier).state++;
     ref.read(ledgerListRefreshProvider.notifier).state++;
-
-    // BeeCount Cloud：始终自动双向同步
-    if (sync is SyncEngine) {
-      final refresh = ref.read(syncStatusRefreshProvider.notifier);
-      Future(() async {
-        try {
-          await sync.sync(ledgerId: ledgerId.toString());
-          refresh.state++;
-          logger.info('PostProcessor', 'BeeCount Cloud 自动同步完成', 'ledgerId=$ledgerId');
-        } catch (e) {
-          logger.error('PostProcessor', 'BeeCount Cloud 自动同步失败', e);
-        }
-      });
-      return;
-    }
-
-    // 其他 provider：检查 auto_sync 开关
-    final prefs = await SharedPreferences.getInstance();
-    if (prefs.getBool('auto_sync') ?? false) {
-      final refresh = ref.read(syncStatusRefreshProvider.notifier);
-      Future(() async {
-        try {
-          await sync.uploadCurrentLedger(ledgerId: ledgerId);
-          refresh.state++;
-          logger.info('PostProcessor', '后台同步完成', 'ledgerId=$ledgerId');
-        } catch (e) {
-          logger.error('PostProcessor', '后台同步失败', e);
-        }
-      });
-    }
   }
 
   static Future<void> _doSyncC(ProviderContainer c, int ledgerId) async {
-    final sync = c.read(syncServiceProvider);
-    try {
-      sync.markLocalChanged(ledgerId: ledgerId);
-    } catch (_) {}
-
     c.read(syncStatusRefreshProvider.notifier).state++;
     c.read(ledgerListRefreshProvider.notifier).state++;
-
-    // BeeCount Cloud：始终自动双向同步
-    if (sync is SyncEngine) {
-      final refresh = c.read(syncStatusRefreshProvider.notifier);
-      Future(() async {
-        try {
-          await sync.sync(ledgerId: ledgerId.toString());
-          refresh.state++;
-          logger.info('PostProcessor', 'BeeCount Cloud 自动同步完成', 'ledgerId=$ledgerId');
-        } catch (e) {
-          logger.error('PostProcessor', 'BeeCount Cloud 自动同步失败', e);
-        }
-      });
-      return;
-    }
-
-    // 其他 provider：检查 auto_sync 开关
-    final prefs = await SharedPreferences.getInstance();
-    if (prefs.getBool('auto_sync') ?? false) {
-      final refresh = c.read(syncStatusRefreshProvider.notifier);
-      Future(() async {
-        try {
-          await sync.uploadCurrentLedger(ledgerId: ledgerId);
-          refresh.state++;
-          logger.info('PostProcessor', '后台同步完成', 'ledgerId=$ledgerId');
-        } catch (e) {
-          logger.error('PostProcessor', '后台同步失败', e);
-        }
-      });
-    }
   }
 
   static Future<void> _doSyncR(Ref ref, int ledgerId) async {
-    final sync = ref.read(syncServiceProvider);
-    try {
-      sync.markLocalChanged(ledgerId: ledgerId);
-    } catch (_) {}
-
     ref.read(syncStatusRefreshProvider.notifier).state++;
     ref.read(ledgerListRefreshProvider.notifier).state++;
-
-    // BeeCount Cloud：始终自动双向同步
-    if (sync is SyncEngine) {
-      final refresh = ref.read(syncStatusRefreshProvider.notifier);
-      Future(() async {
-        try {
-          await sync.sync(ledgerId: ledgerId.toString());
-          refresh.state++;
-          logger.info('PostProcessor', 'BeeCount Cloud 自动同步完成', 'ledgerId=$ledgerId');
-        } catch (e) {
-          logger.error('PostProcessor', 'BeeCount Cloud 自动同步失败', e);
-        }
-      });
-      return;
-    }
-
-    // 其他 provider：检查 auto_sync 开关
-    final prefs = await SharedPreferences.getInstance();
-    if (prefs.getBool('auto_sync') ?? false) {
-      final refresh = ref.read(syncStatusRefreshProvider.notifier);
-      Future(() async {
-        try {
-          await sync.uploadCurrentLedger(ledgerId: ledgerId);
-          refresh.state++;
-          logger.info('PostProcessor', '后台同步完成', 'ledgerId=$ledgerId');
-        } catch (e) {
-          logger.error('PostProcessor', '后台同步失败', e);
-        }
-      });
-    }
   }
 }

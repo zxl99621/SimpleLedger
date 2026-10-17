@@ -16,7 +16,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:beecount/data/db.dart';
 import 'package:beecount/data/repositories/local/local_repository.dart';
-import 'package:beecount/cloud/sync/change_tracker.dart';
+import 'package:beecount/data/change_tracker.dart';
 import 'package:beecount/utils/shared_ledger_picker_filter.dart';
 
 void main() {
