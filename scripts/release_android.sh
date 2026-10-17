@@ -105,7 +105,11 @@ echo "Aligning..."
 "$ZIPALIGN" -P 16 -f 4 "$TMP/stripped.apk" "$TMP/aligned.apk"
 
 mkdir -p "$DIST_DIR"
-OUT="$DIST_DIR/SimpleLedger-${VERSION}-release.apk"
+if [ "$ABI" = "arm64-v8a" ]; then
+  OUT="$DIST_DIR/SimpleLedger-${VERSION}-release.apk"
+else
+  OUT="$DIST_DIR/SimpleLedger-${VERSION}-${ABI}.apk"
+fi
 echo "Signing..."
 "$APKSIGNER" sign \
   --ks "$KEYSTORE" \
