@@ -1,5 +1,14 @@
 # 更新记录
 
+## 1.1.3 — 2026-10-17
+
+### 修复源码完整性
+
+- `.gitignore` 的 `models/` 误伤了 `lib/models/` 与 `lib/data/models/`，导致 `note_history.dart`、`category_icon.dart` 等源码从未进入仓库；GitHub/Gitee 上的源码无法独立编译。已改为只忽略仓库根目录的 `/models/` 并补交缺失文件。
+- CI 增加 analyzer 诊断输出；`flutter analyze` 只对真正 error 失败。
+- GitHub Actions CI 首次通过（Analyze + Test）。
+- 本版 APK 行为与 1.1.2 相同，仅确保源码包和 tag 完整可用。
+
 ## 1.1.2 — 2026-10-17
 
 ### 备份增强（短期方案，不含流式）
