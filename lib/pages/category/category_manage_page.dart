@@ -871,8 +871,7 @@ class _CategoryItem {
     required this.isSubCategory,
     this.parent,
     this.hasSubCategories = false,
-    this.isActionButtons = false,
-  });
+  }) : isActionButtons = false;
 }
 
 class _CategoryCard extends ConsumerWidget {

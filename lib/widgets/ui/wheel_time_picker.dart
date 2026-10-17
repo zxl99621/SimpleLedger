@@ -83,7 +83,7 @@ class _WheelTimePickerState extends State<WheelTimePicker> {
                   TextButton(
                     onPressed: () => Navigator.of(context).pop(),
                     child: Text(
-                      AppLocalizations.of(context)!.commonCancel,
+                      AppLocalizations.of(context).commonCancel,
                       style: TextStyle(
                         fontSize: 16,
                         color: BeeTokens.textTertiary(context),
@@ -91,7 +91,7 @@ class _WheelTimePickerState extends State<WheelTimePicker> {
                     ),
                   ),
                   Text(
-                    AppLocalizations.of(context)!.commonSelectTime,
+                    AppLocalizations.of(context).commonSelectTime,
                     style: TextStyle(
                       fontSize: 17,
                       fontWeight: FontWeight.w600,
@@ -103,7 +103,7 @@ class _WheelTimePickerState extends State<WheelTimePicker> {
                       Navigator.of(context).pop(TimeOfDay(hour: hour, minute: minute));
                     },
                     child: Text(
-                      AppLocalizations.of(context)!.commonOk,
+                      AppLocalizations.of(context).commonOk,
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w500,

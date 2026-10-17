@@ -112,10 +112,12 @@ Future<SimpleStatsData> _load(
       repo.monthlyTotals(ledgerId: ledgerId, month: month),
   ]);
 
+  // 页面只展示 20 条、AI 快照最多 20 条；长区间不再把全部交易读进内存。
   final loadedTransactions = await repo.getTransactionsByLedgerInRange(
     ledgerId: ledgerId,
     start: start,
     end: end,
+    limit: 50,
   );
   final transactions = [...loadedTransactions]
     ..sort((a, b) => b.happenedAt.compareTo(a.happenedAt));

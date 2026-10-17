@@ -25,6 +25,24 @@ void main() {
 
   tearDown(() async => db.close());
 
+  test('getTransactionsByLedgerInRange 遵守可选 limit', () async {
+    await repo.addTransaction(
+        ledgerId: 1, type: 'expense', amount: 10, happenedAt: DateTime(2026, 7, 1));
+    await repo.addTransaction(
+        ledgerId: 1, type: 'expense', amount: 20, happenedAt: DateTime(2026, 7, 3));
+    await repo.addTransaction(
+        ledgerId: 1, type: 'expense', amount: 30, happenedAt: DateTime(2026, 7, 2));
+
+    final result = await repo.getTransactionsByLedgerInRange(
+      ledgerId: 1,
+      start: DateTime(2026, 7, 1),
+      end: DateTime(2026, 8, 1),
+      limit: 2,
+    );
+
+    expect(result.map((t) => t.amount), [20, 30]);
+  });
+
   test('按 happenedAt 降序返回,且遵守 limit', () async {
     await repo.addTransaction(
         ledgerId: 1, type: 'expense', amount: 10, happenedAt: DateTime(2026, 7, 1));

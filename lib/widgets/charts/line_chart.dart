@@ -134,7 +134,7 @@ class LineChart extends StatelessWidget {
                           size: 14, color: BeeTokens.textSecondary(context)),
                       const SizedBox(width: 4),
                       Text(
-                        hintText ?? AppLocalizations.of(context)!.analyticsSwipeHint,
+                        hintText ?? AppLocalizations.of(context).analyticsSwipeHint,
                         style: Theme.of(context)
                             .textTheme
                             .labelSmall

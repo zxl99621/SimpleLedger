@@ -510,7 +510,7 @@ class BeeDatabase extends _$BeeDatabase {
   /// 测试专用:直接注入 [QueryExecutor](通常是 NativeDatabase.memory()),
   /// 跳过 [_openConnection] 的文件系统 / 平台副作用。test/ 下的 unit test
   /// 用这个。
-  BeeDatabase.forTesting(QueryExecutor executor) : super(executor);
+  BeeDatabase.forTesting(super.executor);
 
   @override
   int get schemaVersion =>

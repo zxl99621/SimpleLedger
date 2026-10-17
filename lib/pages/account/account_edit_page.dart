@@ -835,7 +835,7 @@ class _AccountEditPageState extends ConsumerState<AccountEditPage> {
                                 ),
                               ),
                               value: _reminderEnabled,
-                              activeColor: primaryColor,
+                              activeThumbColor: primaryColor,
                               onChanged: (value) =>
                                   setState(() => _reminderEnabled = value),
                             ),

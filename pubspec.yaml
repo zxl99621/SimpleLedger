@@ -1,7 +1,7 @@
 name: beecount
 description: "极简记账 - 本地优先的个人记账工具"
 publish_to: 'none'
-version: 1.0.0+1
+version: 1.0.1+2
 
 environment:
   sdk: ^3.6.0
@@ -26,6 +26,7 @@ dependencies:
   csv: ^5.0.2
   file_picker: ^8.1.2
   crypto: ^3.0.5
+  pointycastle: ^4.0.0
   uuid: ^4.5.1
   flutter_svg: ^2.0.10+1
   package_info_plus: ^8.0.2

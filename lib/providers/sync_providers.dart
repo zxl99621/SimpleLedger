@@ -867,7 +867,7 @@ Future<void> reconcileProfileToServer({
       try {
         // ignore: deprecated_member_use
         final hex =
-            '#${currentThemeColor.value.toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}';
+            '#${currentThemeColor.toARGB32().toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}';
         await cloud.updateMyProfileThemeColor(hex: hex);
         logger.info('CloudSync', 'reconcile: pushed theme_primary_color=$hex');
       } catch (e, st) {

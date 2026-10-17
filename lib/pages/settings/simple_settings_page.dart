@@ -6,6 +6,7 @@ import '../../providers/theme_providers.dart';
 import '../../styles/tokens.dart';
 import '../data/import_page.dart';
 import '../data/export_page.dart';
+import 'app_lock_settings_page.dart';
 import 'font_settings_page.dart';
 import 'simple_about_page.dart';
 import 'simple_data_page.dart';
@@ -54,6 +55,17 @@ class SimpleSettingsPage extends ConsumerWidget {
                   onTap: () => _push(context, const FontSettingsPage()),
                 ),
                 const _TotalAssetSwitchTile(),
+              ],
+            ),
+            _SectionLabel('安全'),
+            _SettingsGroup(
+              children: [
+                _SettingsTile(
+                  icon: Icons.lock_outline_rounded,
+                  title: '应用锁',
+                  subtitle: 'PIN / 生物识别',
+                  onTap: () => _push(context, const AppLockSettingsPage()),
+                ),
               ],
             ),
             _SectionLabel('数据管理'),

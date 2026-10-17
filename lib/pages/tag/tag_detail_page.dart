@@ -13,7 +13,6 @@ import '../../services/billing/post_processor.dart';
 import '../../utils/category_utils.dart';
 import '../../utils/month_range.dart';
 import '../../utils/shared_ledger_picker_filter.dart';
-import '../../widgets/ui/capsule_switcher.dart';
 import '../../l10n/app_localizations.dart';
 import 'tag_edit_page.dart';
 

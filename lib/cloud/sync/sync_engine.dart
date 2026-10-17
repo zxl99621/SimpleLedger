@@ -1470,8 +1470,9 @@ class SyncHealthReport {
   bool get needsBackfill {
     if (error != null || unpushedChanges > 0) return false;
     if (accounts.remote >= 0 && accounts.local > accounts.remote) return true;
-    if (categories.remote >= 0 && categories.local > categories.remote)
+    if (categories.remote >= 0 && categories.local > categories.remote) {
       return true;
+    }
     if (tags.remote >= 0 && tags.local > tags.remote) return true;
     return false;
   }

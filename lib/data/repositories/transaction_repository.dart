@@ -298,6 +298,7 @@ abstract class TransactionRepository {
     required int ledgerId,
     required DateTime start,
     required DateTime end,
+    int? limit,
   });
 
   /// 最近 [limit] 笔交易(按 happenedAt 降序),纯 [Transaction] 行、无分类/账户

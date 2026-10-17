@@ -8,6 +8,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../../providers.dart';
+import '../../services/backup_crypto.dart';
 import '../../services/simple_backup_service.dart';
 import '../../styles/tokens.dart';
 import '../data/export_page.dart';
@@ -51,6 +52,9 @@ class _SimpleDataPageState extends ConsumerState<SimpleDataPage> {
   }
 
   Future<void> _createBackup() async {
+    final choice = await _askBackupPassword();
+    if (choice == null) return;
+
     await _runBusy('正在打包备份…', () async {
       final db = ref.read(databaseProvider);
       // 把 WAL 内容合并回主数据库文件，保证备份是完整快照。
@@ -62,26 +66,159 @@ class _SimpleDataPageState extends ConsumerState<SimpleDataPage> {
         _showMessage('备份超过 512 MB，当前版本无法安全保存，请先清理部分图片附件');
         return;
       }
-      final bytes = await zip.readAsBytes();
+
+      var bytes = await zip.readAsBytes();
+      var fileName = p.basename(zip.path);
+      var extensions = const ['zip'];
+      if (choice.password != null) {
+        bytes = await BackupCrypto.encrypt(bytes, choice.password!);
+        fileName = fileName.replaceFirst(RegExp(r'\.zip$'), '.slbk');
+        extensions = const ['slbk'];
+      }
+
       final saved = await FilePicker.platform.saveFile(
         dialogTitle: '保存备份',
-        fileName: p.basename(zip.path),
+        fileName: fileName,
         type: FileType.custom,
-        allowedExtensions: const ['zip'],
+        allowedExtensions: extensions,
         bytes: bytes,
       );
       if (saved != null) {
-        if (mounted) _showMessage('备份已保存');
+        if (mounted) _showMessage(choice.password == null ? '备份已保存' : '加密备份已保存');
       }
       if (await zip.exists()) await zip.delete();
     });
+  }
+
+  /// 返回 null 表示用户取消；password 为 null 表示不加密。
+  Future<_BackupPasswordChoice?> _askBackupPassword() async {
+    final password = TextEditingController();
+    final confirm = TextEditingController();
+    var usePassword = false;
+    String? error;
+
+    final result = await showDialog<_BackupPasswordChoice>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('备份选项'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: usePassword,
+                onChanged: (value) =>
+                    setDialogState(() => usePassword = value),
+                title: const Text('使用密码加密'),
+                subtitle: const Text('恢复时需要输入同一密码；忘记密码将无法恢复'),
+              ),
+              if (usePassword) ...[
+                TextField(
+                  controller: password,
+                  obscureText: true,
+                  decoration: const InputDecoration(labelText: '密码（至少 8 位）'),
+                ),
+                TextField(
+                  controller: confirm,
+                  obscureText: true,
+                  decoration: const InputDecoration(labelText: '确认密码'),
+                ),
+              ],
+              if (error != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Text(
+                    error!,
+                    style: TextStyle(
+                        color: Theme.of(context).colorScheme.error),
+                  ),
+                ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () {
+                if (!usePassword) {
+                  Navigator.pop(
+                      dialogContext, const _BackupPasswordChoice.plain());
+                  return;
+                }
+                if (password.text.length < 8) {
+                  setDialogState(() => error = '密码至少 8 位');
+                  return;
+                }
+                if (password.text != confirm.text) {
+                  setDialogState(() => error = '两次输入的密码不一致');
+                  return;
+                }
+                Navigator.pop(
+                    dialogContext, _BackupPasswordChoice(password.text));
+              },
+              child: const Text('开始备份'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    password.dispose();
+    confirm.dispose();
+    return result;
+  }
+
+  Future<String?> _askRestorePassword({String? error}) async {
+    final controller = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('输入备份密码'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('该备份已加密，请输入创建备份时设置的密码。'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              obscureText: true,
+              autofocus: true,
+              decoration: const InputDecoration(labelText: '密码'),
+            ),
+            if (error != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Text(
+                  error,
+                  style: TextStyle(color: Theme.of(dialogContext).colorScheme.error),
+                ),
+              ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, controller.text),
+            child: const Text('确定'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    return result;
   }
 
   Future<void> _restore() async {
     final picked = await FilePicker.platform.pickFiles(
       dialogTitle: '选择备份文件',
       type: FileType.custom,
-      allowedExtensions: const ['zip'],
+      allowedExtensions: const ['zip', 'slbk'],
     );
     final file = picked?.files.single;
     final path = file?.path;
@@ -93,7 +230,25 @@ class _SimpleDataPageState extends ConsumerState<SimpleDataPage> {
         _showMessage('备份文件超过 512 MB，当前版本无法安全读取，请先在电脑上解压处理');
         return;
       }
-      final bytes = await backupFile.readAsBytes();
+
+      final raw = await backupFile.readAsBytes();
+      Uint8List? decrypted;
+      if (BackupCrypto.isEncrypted(raw)) {
+        String? error;
+        while (mounted) {
+          final password = await _askRestorePassword(error: error);
+          if (password == null) return;
+          try {
+            decrypted = await BackupCrypto.decrypt(raw, password);
+            break;
+          } on BackupCryptoException catch (e) {
+            error = e.message;
+          }
+        }
+        if (decrypted == null || !mounted) return;
+      }
+
+      final bytes = decrypted ?? raw;
       final extracted = await _backupService.extractAndValidate(bytes);
 
       if (!mounted) return;
@@ -368,4 +523,12 @@ class _SimpleDataPageState extends ConsumerState<SimpleDataPage> {
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
     );
   }
+}
+
+/// 备份是否加密及密码；[password] 为 null 表示明文 zip。
+class _BackupPasswordChoice {
+  const _BackupPasswordChoice(this.password);
+  const _BackupPasswordChoice.plain() : password = null;
+
+  final String? password;
 }

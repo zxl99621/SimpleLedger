@@ -332,7 +332,7 @@ class MainApp extends ConsumerWidget {
       colorScheme: base.colorScheme.copyWith(primary: primary),
       primaryColor: primary,
       scaffoldBackgroundColor: BeeTheme.paper,
-      dividerColor: Colors.black.withOpacity(0.06),
+      dividerColor: Colors.black.withValues(alpha: 0.06),
       listTileTheme: ListTileThemeData(
         dense: true,
         contentPadding: const EdgeInsets.symmetric(horizontal: 12),

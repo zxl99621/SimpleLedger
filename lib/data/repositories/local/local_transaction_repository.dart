@@ -927,17 +927,19 @@ class LocalTransactionRepository implements TransactionRepository {
     required int ledgerId,
     required DateTime start,
     required DateTime end,
+    int? limit,
   }) async {
-    return await (db.select(db.transactions)
-          ..where((t) =>
-              t.ledgerId.equals(ledgerId) &
-              t.happenedAt.isBiggerOrEqualValue(start) &
-              t.happenedAt.isSmallerThanValue(end))
-          ..orderBy([
-            (t) => d.OrderingTerm(
-                expression: t.happenedAt, mode: d.OrderingMode.desc)
-          ]))
-        .get();
+    final query = db.select(db.transactions)
+      ..where((t) =>
+          t.ledgerId.equals(ledgerId) &
+          t.happenedAt.isBiggerOrEqualValue(start) &
+          t.happenedAt.isSmallerThanValue(end))
+      ..orderBy([
+        (t) => d.OrderingTerm(
+            expression: t.happenedAt, mode: d.OrderingMode.desc)
+      ]);
+    if (limit != null && limit > 0) query.limit(limit);
+    return await query.get();
   }
 
   @override
@@ -1264,7 +1266,9 @@ class LocalTransactionRepository implements TransactionRepository {
       final list = await (db.select(db.sharedLedgerCategories)
             ..where((t) => t.syncId.isIn(catSyncIds.toList())))
           .get();
-      for (final s in list) sharedCatBySyncId[s.syncId] = s;
+      for (final s in list) {
+        sharedCatBySyncId[s.syncId] = s;
+      }
     }
 
     // 批量查共享账户
@@ -1273,7 +1277,9 @@ class LocalTransactionRepository implements TransactionRepository {
       final list = await (db.select(db.sharedLedgerAccounts)
             ..where((t) => t.syncId.isIn(accSyncIds.toList())))
           .get();
-      for (final s in list) sharedAccBySyncId[s.syncId] = s;
+      for (final s in list) {
+        sharedAccBySyncId[s.syncId] = s;
+      }
     }
 
     // 批量查 tag overrides + shared tags
@@ -1293,7 +1299,9 @@ class LocalTransactionRepository implements TransactionRepository {
         final sharedTags = await (db.select(db.sharedLedgerTags)
               ..where((t) => t.syncId.isIn(tagSids)))
             .get();
-        for (final s in sharedTags) sharedTagBySyncId[s.syncId] = s;
+        for (final s in sharedTags) {
+          sharedTagBySyncId[s.syncId] = s;
+        }
       }
     }
 

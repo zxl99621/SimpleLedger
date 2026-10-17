@@ -1173,7 +1173,7 @@ class _AccountsPageState extends ConsumerState<AccountsPage> {
                         ),
                       ),
                       value: enabled,
-                      activeColor: primaryColor,
+                      activeThumbColor: primaryColor,
                       onChanged: (value) async {
                         await ref
                             .read(accountFeatureSetterProvider)

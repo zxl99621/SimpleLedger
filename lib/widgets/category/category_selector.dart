@@ -443,10 +443,9 @@ class _CategoryItem extends StatelessWidget {
     required this.onTap,
     this.selected = false,
     this.isSubCategory = false,
-    this.parent,
     this.hasChildren = false,
     this.expanded = false,
-  });
+  }) : parent = null;
 
   /// 构建图标组件（支持自定义图标）
   Widget _buildIcon(BuildContext context, double size, Color color) {

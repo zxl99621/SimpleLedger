@@ -35,6 +35,7 @@ class _SimpleAiSettingsPageState extends ConsumerState<SimpleAiSettingsPage> {
   bool _testing = false;
   String? _gpuInfo;
   bool _detectingGpu = false;
+  DateTime _lastProgressAt = DateTime.fromMillisecondsSinceEpoch(0);
 
   @override
   void initState() {
@@ -102,6 +103,7 @@ class _SimpleAiSettingsPageState extends ConsumerState<SimpleAiSettingsPage> {
       _cancelling = false;
       _received = 0;
       _total = -1;
+      _lastProgressAt = DateTime.fromMillisecondsSinceEpoch(0);
     });
     try {
       await _downloader.download(
@@ -109,6 +111,15 @@ class _SimpleAiSettingsPageState extends ConsumerState<SimpleAiSettingsPage> {
         destination: file,
         onProgress: (received, total) {
           if (!mounted) return;
+          // 每个网络 chunk 都 setState 会让 2 GB 下载持续掉帧；节流到 200ms。
+          final now = DateTime.now();
+          final finished = total > 0 && received >= total;
+          if (!finished &&
+              now.difference(_lastProgressAt) <
+                  const Duration(milliseconds: 200)) {
+            return;
+          }
+          _lastProgressAt = now;
           setState(() {
             _received = received;
             _total = total;

@@ -12,7 +12,8 @@ final showTotalAssetProvider = StateProvider<bool>((ref) => true);
 final showTotalAssetInitProvider = FutureProvider<void>((ref) async {
   final prefs = await SharedPreferences.getInstance();
   final saved = prefs.getBool('simple_show_total_asset');
-  if (saved != null) {
+  // 用户在异步读取完成前已经改过开关时，保留用户的选择。
+  if (saved != null && ref.read(showTotalAssetProvider) == true) {
     ref.read(showTotalAssetProvider.notifier).state = saved;
   }
   ref.listen<bool>(showTotalAssetProvider, (previous, next) async {
