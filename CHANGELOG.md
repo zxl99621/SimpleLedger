@@ -1,5 +1,18 @@
 # 更新记录
 
+## 1.1.1 — 2026-10-17
+
+### 发布工程
+
+- 新增 `scripts/release_android.sh`：构建 arm64 release → 删除其它 ABI 的 native 资产 → zipalign → 重签 → 校验，输出到 `F:\SimpleLedger-dist`。
+- arm64 APK 从 20.0 MB 降到约 19 MB，`aapt` 的 native-code 只剩 `arm64-v8a`。
+- 新增 GitHub Actions：`android-ci.yml`（analyze + test）和 `android-release.yml`（手动发版，需配置 keystore/base64 与密码 secrets）。
+
+### 清理
+
+- 移除公网汇率拉取服务与多币种选择/换算 UI 的剩余运行时依赖（`dio` 等）；保留数据库字段和历史账单原币种展示。
+- 数据库 schema、备份格式、应用锁、小组件、简单 AI 不变。
+
 ## 1.1.0 — 2026-10-17
 
 ### 功能裁剪

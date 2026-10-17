@@ -1,7 +1,7 @@
 name: beecount
 description: "极简记账 - 本地优先的个人记账工具"
 publish_to: 'none'
-version: 1.1.0+3
+version: 1.1.1+4
 
 environment:
   sdk: ^3.6.0
@@ -32,7 +32,6 @@ dependencies:
   url_launcher: ^6.3.0
   http: ^1.2.2
   share_plus: ^12.0.1
-  dio: ^5.4.3+1
   reorderable_grid_view: ^2.2.8
   excel: ^4.0.6
   # 注:pub.dev 最新为 0.9.3,但其 environment.sdk 要求 Dart >=3.10.0 / Flutter
