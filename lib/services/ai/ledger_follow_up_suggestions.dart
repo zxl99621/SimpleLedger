@@ -82,13 +82,13 @@ final class LedgerFollowUpSuggestions {
             candidates.add(suggestion(
                 'followup-leaf',
                 l10n.agentFollowUpLeafTitle(name),
-                l10n.agentFollowUpLeafPrompt(name, range)));
+                l10n.agentFollowUpLeafPrompt(range, name)));
           }
         }
         candidates.add(suggestion(
             'followup-trend',
             l10n.agentFollowUpTrendTitle,
-            l10n.agentFollowUpTrendPrompt(category, range)));
+            l10n.agentFollowUpTrendPrompt(range, category)));
         // Include the previous month so month-over-month has a comparison point.
         final previousMonth = _previousMonth(start);
         final comparisonRange = l10n.agentFollowUpRange(
@@ -96,7 +96,7 @@ final class LedgerFollowUpSuggestions {
         candidates.add(suggestion(
             'followup-compare',
             l10n.agentFollowUpCompareTitle,
-            l10n.agentFollowUpComparePrompt(category, comparisonRange)));
+            l10n.agentFollowUpComparePrompt(comparisonRange, category)));
       } else if (item.toolName == 'get_spending_trend') {
         if (names.isEmpty) {
           candidates.add(suggestion(
@@ -107,7 +107,7 @@ final class LedgerFollowUpSuggestions {
           candidates.add(suggestion(
               'followup-leaf',
               l10n.agentFollowUpLeafTitle(names.single),
-              l10n.agentFollowUpLeafPrompt(names.single, range)));
+              l10n.agentFollowUpLeafPrompt(range, names.single)));
         }
         if (data['comparison'] != 'previous_point') {
           final comparisonRange = l10n.agentFollowUpRange(
@@ -115,7 +115,7 @@ final class LedgerFollowUpSuggestions {
           candidates.add(suggestion(
               'followup-compare',
               l10n.agentFollowUpCompareTitle,
-              l10n.agentFollowUpComparePrompt(category, comparisonRange)));
+              l10n.agentFollowUpComparePrompt(comparisonRange, category)));
         }
         candidates.add(suggestion(
             'followup-overview',
@@ -129,7 +129,7 @@ final class LedgerFollowUpSuggestions {
         candidates.add(suggestion(
             'followup-trend',
             l10n.agentFollowUpTrendTitle,
-            l10n.agentFollowUpTrendPrompt(category, range)));
+            l10n.agentFollowUpTrendPrompt(range, category)));
       }
     }
     return const AgentPromptSuggestionSelector().select(candidates,

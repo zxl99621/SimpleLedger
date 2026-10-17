@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:agentcore/agentcore.dart';
@@ -225,20 +226,61 @@ class AIProviderFactory {
       yield _normalizeCompletion(Map<String, dynamic>.from(decoded));
       return;
     }
-    await for (final line in body.stream
+    // 用显式订阅而不是 await-for：收到 [DONE] 后立即取消上游，
+    // 不等待服务端关闭 HTTP 连接（部分网关会一直挂着连接）。
+    final lines = body.stream
         .map<List<int>>(List<int>.from)
         .transform(utf8.decoder)
-        .transform(const LineSplitter())) {
-      if (!line.startsWith('data:')) continue;
-      final data = line.substring(5).trim();
-      if (data == '[DONE]') return;
-      if (data.isEmpty) continue;
-      final decoded = jsonDecode(data);
-      if (decoded is Map) {
-        final mapped = Map<String, dynamic>.from(decoded);
-        _throwEmbeddedToolError(mapped);
-        yield mapped;
+        .transform(const LineSplitter());
+    final controller = StreamController<Map<String, dynamic>>();
+    StreamSubscription<String>? subscription;
+    var finished = false;
+
+    subscription = lines.listen(
+      (line) {
+        if (finished) return;
+        if (!line.startsWith('data:')) return;
+        final data = line.substring(5).trim();
+        if (data.isEmpty) return;
+        if (data == '[DONE]') {
+          finished = true;
+          subscription?.cancel();
+          controller.close();
+          return;
+        }
+        try {
+          final decoded = jsonDecode(data);
+          if (decoded is Map) {
+            final mapped = Map<String, dynamic>.from(decoded);
+            _throwEmbeddedToolError(mapped);
+            controller.add(mapped);
+          }
+        } catch (error, stackTrace) {
+          finished = true;
+          subscription?.cancel();
+          controller.addError(error, stackTrace);
+          controller.close();
+        }
+      },
+      onError: (Object error, StackTrace stackTrace) {
+        if (!controller.isClosed) {
+          controller.addError(error, stackTrace);
+          controller.close();
+        }
+      },
+      onDone: () {
+        if (!controller.isClosed) controller.close();
+      },
+      cancelOnError: false,
+    );
+
+    try {
+      await for (final item in controller.stream) {
+        yield item;
       }
+    } finally {
+      await subscription.cancel();
+      if (!controller.isClosed) await controller.close();
     }
   }
 

@@ -25,19 +25,14 @@ dependencies:
   connectivity_plus: ^6.1.0
   csv: ^5.0.2
   file_picker: ^8.1.2
-  supabase_flutter: ^2.5.6
   crypto: ^3.0.5
   uuid: ^4.5.1
   flutter_svg: ^2.0.10+1
-  flutter_markdown_plus: ^1.0.3
   package_info_plus: ^8.0.2
   url_launcher: ^6.3.0
-  in_app_review: ^2.0.9
   http: ^1.2.2
   share_plus: ^12.0.1
-  permission_handler: ^11.3.1
   dio: ^5.4.3+1
-  open_filex: ^4.4.0
   flutter_local_notifications: ^17.2.2
   timezone: ^0.9.4
   flutter_list_view: ^1.1.29
@@ -55,7 +50,6 @@ dependencies:
   image_cropper: ^10.0.0
   gbk_codec: ^0.4.0
   app_links: ^6.4.1
-  record: ^5.1.2
   yaml: ^3.1.2
   qr_flutter: ^4.1.0
   gal: ^2.3.0
@@ -64,17 +58,6 @@ dependencies:
   llama_flutter_android: ^0.2.6
   # API Key 加密存储（Android Keystore / EncryptedSharedPreferences）
   flutter_secure_storage: ^10.3.4
-  # 打赏(IAP)只在 iOS 提供,Android 从不显示入口(见 mine_page.dart / donation_service.dart)。
-  # 这里故意不依赖 `in_app_purchase` 联合插件:它会把 in_app_purchase_android
-  # 一并打进 AAB,从而带入 com.android.billingclient。Google Play 要求结算库
-  # >= 8.0.0(2026-11-01 截止),而官方插件升到 billing 8 的版本
-  # (in_app_purchase_android 0.5.0)要求 Flutter >= 3.38 / Dart ^3.10,
-  # 远超本项目锁定的 Flutter 3.27.3。既然 Android 根本不用结算,索性只依赖
-  # iOS 专属实现,让 AAB 里彻底不含结算库 —— 该策略要求随之不适用。
-  # ⚠️ 若将来要在 Android 上做内购(如付费皮肤),需改回 `in_app_purchase`
-  #    联合插件,并同步升级 Flutter 以获得 billing 8+ 的实现。
-  in_app_purchase_storekit: ^0.3.6
-  in_app_purchase_platform_interface: ^1.4.0
   flutter_ai_kit:
     path: packages/flutter_ai_kit
   flutter_ai_kit_zhipu:
@@ -83,8 +66,6 @@ dependencies:
     path: packages/flutter_ai_kit_openai
   agentcore:
     path: packages/agentcore
-  flutter_agent_ui:
-    path: packages/flutter_agent_ui
   flutter_cloud_sync:
     path: packages/flutter_cloud_sync
   flutter_cloud_sync_supabase:
@@ -96,10 +77,7 @@ dependencies:
   flutter_cloud_sync_s3:
     path: packages/flutter_cloud_sync_s3
   quick_actions: ^1.1.0
-  table_calendar: ^3.1.0
   local_auth: ^2.3.0
-  webview_flutter: ^4.13.0
-  webview_flutter_wkwebview: ^3.23.0
   country_flags: ^3.2.0
   jovial_svg: ^1.1.29
 
