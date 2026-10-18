@@ -23,27 +23,23 @@ void main() {
       expect(selectSpecsToRender(const []), isEmpty);
     });
 
-    test('只渲染已安装的 spec,不盲渲目录里的其它类型', () {
-      // 场景对应 plan.md P1:已安装 {glance-medium, netWorth-medium} →
-      // 只应对这两个 spec 渲染,目录里其余 10 个 spec(如 dashboard-large、
-      // budget-small)不应出现在结果里。
-      final installed = [WidgetSpec.glanceMedium, WidgetSpec.netWorthMedium];
+    test('只渲染已安装的目录内 spec', () {
+      // 目录当前只有 glance-medium;传入目录外条目时仍原样返回,由上游
+      // matchInstalledSpecs 负责过滤。
+      final installed = [WidgetSpec.glanceMedium];
       final result = selectSpecsToRender(installed);
 
-      expect(result, [WidgetSpec.glanceMedium, WidgetSpec.netWorthMedium]);
-      expect(result, isNot(contains(WidgetSpec.dashboardLarge)));
-      expect(result, isNot(contains(WidgetSpec.budgetSmall)));
-      expect(result.length, 2);
+      expect(result, [WidgetSpec.glanceMedium]);
+      expect(result.length, 1);
     });
 
     test('按 (type,size) 去重(如 Android 同一 provider 多个实例)', () {
       final installed = [
         WidgetSpec.glanceMedium,
         WidgetSpec.glanceMedium,
-        WidgetSpec.netWorthSmall,
       ];
       final result = selectSpecsToRender(installed);
-      expect(result, [WidgetSpec.glanceMedium, WidgetSpec.netWorthSmall]);
+      expect(result, [WidgetSpec.glanceMedium]);
     });
   });
 

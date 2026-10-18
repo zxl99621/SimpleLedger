@@ -1,3 +1,4 @@
+import 'dart:ffi' show Abi;
 import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'ai_settings.dart';
+import 'model_validation.dart';
 
 /// AI 推理模式（默认云端，首次使用会引导选择）。
 final aiModeProvider = StateProvider<AiMode>((ref) => AiMode.cloud);
@@ -26,6 +28,12 @@ final aiOcrEnabledProvider = StateProvider<bool>((ref) => false);
 
 /// 当前本地模型 id（对应 [localModelCatalog]）。
 final aiLocalModelIdProvider = StateProvider<String?>((ref) => null);
+
+/// 是否尝试使用 Vulkan GPU 加速。
+///
+/// 默认关闭：移动端 ggml-Vulkan 在部分驱动（实测 Mali）会在张量分配阶段
+/// 原生崩溃，无法用 Dart try/catch 兜底。GPU 作为实验能力，需用户手动开启。
+final aiGpuEnabledProvider = StateProvider<bool>((ref) => false);
 
 /// 本地模型下载源。
 final aiModelSourceProvider =
@@ -101,6 +109,9 @@ final aiConfigInitProvider = FutureProvider<void>((ref) async {
   }
   ref.read(aiFirstUseDoneProvider.notifier).state =
       prefs.getBool('simple_ai_first_use_done') ?? false;
+  // 新 key：旧版本可能把 GPU 开关持久化为 true，升级后必须回到默认 CPU。
+  ref.read(aiGpuEnabledProvider.notifier).state =
+      prefs.getBool('simple_ai_gpu_enabled_v2') ?? false;
 
   final key = await _secureStorage.read(key: _apiKeyStorageKey);
   if (key != null) {
@@ -135,6 +146,9 @@ final aiConfigInitProvider = FutureProvider<void>((ref) async {
   ref.listen<bool>(aiFirstUseDoneProvider, (_, next) {
     prefs.setBool('simple_ai_first_use_done', next);
   });
+  ref.listen<bool>(aiGpuEnabledProvider, (_, next) {
+    prefs.setBool('simple_ai_gpu_enabled_v2', next);
+  });
   ref.listen<String?>(aiApiKeyProvider, (_, next) async {
     final value = next?.trim() ?? '';
     if (value.isEmpty) {
@@ -145,20 +159,100 @@ final aiConfigInitProvider = FutureProvider<void>((ref) async {
   });
 });
 
-/// 当前本地模型文件路径；未选择或文件不存在时返回 null。
-final aiLocalModelFileProvider = FutureProvider<String?>((ref) async {
+/// 本地模型的可用状态（比“文件存在”更细，供 UI 给出可操作的提示）。
+enum LocalModelStatus { notSelected, checking, missing, unsupportedAbi, invalid, ready }
+
+class LocalModelStatusInfo {
+  const LocalModelStatusInfo(
+    this.status, {
+    this.path,
+    this.sizeBytes,
+    this.reason,
+  });
+
+  final LocalModelStatus status;
+  final String? path;
+  final int? sizeBytes;
+  final String? reason;
+}
+
+/// 校验本地模型：ABI → 文件存在 → 大小合理 → GGUF magic。
+final localModelStatusProvider =
+    FutureProvider<LocalModelStatusInfo>((ref) async {
   final id = ref.watch(aiLocalModelIdProvider);
   final model = localModelById(id);
-  if (model == null) return null;
+  if (model == null) {
+    return const LocalModelStatusInfo(LocalModelStatus.notSelected);
+  }
+
+  // llama_flutter_android 只提供 arm64-v8a 原生库。
+  if (!isArm64AbiName(Abi.current().toString())) {
+    return const LocalModelStatusInfo(
+      LocalModelStatus.unsupportedAbi,
+      reason: '本地模型仅支持 arm64 设备',
+    );
+  }
+
   final path = await localModelPath(model.fileName);
-  return await File(path).exists() ? path : null;
+  final file = File(path);
+  if (!await file.exists()) {
+    return LocalModelStatusInfo(LocalModelStatus.missing, path: path);
+  }
+
+  final size = await file.length();
+  if (!isPlausibleModelSize(size)) {
+    return LocalModelStatusInfo(
+      LocalModelStatus.invalid,
+      path: path,
+      sizeBytes: size,
+      reason: '模型文件不完整，请重新下载',
+    );
+  }
+
+  try {
+    final raf = await file.open();
+    List<int> header;
+    try {
+      header = await raf.read(4);
+    } finally {
+      await raf.close();
+    }
+    if (!isGgufHeader(header)) {
+      return LocalModelStatusInfo(
+        LocalModelStatus.invalid,
+        path: path,
+        sizeBytes: size,
+        reason: '不是有效的 GGUF 模型文件，请重新下载',
+      );
+    }
+  } catch (error) {
+    return LocalModelStatusInfo(
+      LocalModelStatus.invalid,
+      path: path,
+      sizeBytes: size,
+      reason: '模型文件无法读取：$error',
+    );
+  }
+
+  return LocalModelStatusInfo(
+    LocalModelStatus.ready,
+    path: path,
+    sizeBytes: size,
+  );
 });
 
-/// AI 是否已具备可用配置（云端需要地址+模型+Key；本地需要已下载模型）。
+/// 当前本地模型文件路径；未选择或校验未通过时返回 null。
+final aiLocalModelFileProvider = FutureProvider<String?>((ref) async {
+  final info = await ref.watch(localModelStatusProvider.future);
+  return info.status == LocalModelStatus.ready ? info.path : null;
+});
+
+/// AI 是否已具备可用配置（云端需要地址+模型+Key；本地需要通过文件校验）。
 final aiReadyProvider = Provider<bool>((ref) {
   final mode = ref.watch(aiModeProvider);
   if (mode == AiMode.local) {
-    return ref.watch(aiLocalModelFileProvider).valueOrNull != null;
+    return ref.watch(localModelStatusProvider).valueOrNull?.status ==
+        LocalModelStatus.ready;
   }
   final baseUrl = ref.watch(aiBaseUrlProvider).trim();
   final model = ref.watch(aiModelNameProvider).trim();

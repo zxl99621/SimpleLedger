@@ -8,6 +8,7 @@ import '../../data/db.dart' show Category, Transaction;
 import 'ai_engine.dart';
 import 'ai_settings.dart';
 import 'ai_providers.dart';
+import 'ai_text_utils.dart';
 import 'cloud_ai_engine.dart';
 import 'local_ai_engine.dart';
 
@@ -127,9 +128,7 @@ JSON 字段：
     return _parseBillDraft(response, categoryNames, today);
   }
 
-  Future<String> monthlySummary(AiLedgerSnapshot snapshot) {
-    return engine.complete(
-      [
+  List<AiMessage> _summaryMessages(AiLedgerSnapshot snapshot) => [
         const AiMessage(role: 'system', content: _system),
         AiMessage(
           role: 'user',
@@ -137,15 +136,9 @@ JSON 字段：
               '先说收入和支出总体情况，再说支出最多的 2-3 个分类，最后给一句中性结论。'
               '不要列清单，不要编造数据。\n\n${snapshot.toPromptText()}\n/no_think',
         ),
-      ],
-      temperature: 0.5,
-      maxTokens: 420,
-    );
-  }
+      ];
 
-  Future<String> spendingInsight(AiLedgerSnapshot snapshot) {
-    return engine.complete(
-      [
+  List<AiMessage> _insightMessages(AiLedgerSnapshot snapshot) => [
         const AiMessage(role: 'system', content: _system),
         AiMessage(
           role: 'user',
@@ -153,25 +146,48 @@ JSON 字段：
               '重点看高消费分类、环比/同比变化。用中文短句，不要编造数据。\n\n'
               '${snapshot.toPromptText()}\n/no_think',
         ),
-      ],
-      temperature: 0.5,
-      maxTokens: 420,
-    );
-  }
+      ];
 
-  Future<String> answer(String question, AiLedgerSnapshot snapshot) {
-    return engine.complete(
-      [
+  List<AiMessage> _answerMessages(String question, AiLedgerSnapshot snapshot) => [
         const AiMessage(role: 'system', content: _system),
         AiMessage(
           role: 'user',
           content: '下面是用户的账本数据。请直接回答问题，回答尽量简短；'
               '如果数据不足以回答，请说明。\n\n${snapshot.toPromptText()}\n\n用户问题：$question\n/no_think',
         ),
-      ],
-      temperature: 0.4,
-      maxTokens: 480,
-    );
+      ];
+
+  Future<String> monthlySummary(AiLedgerSnapshot snapshot) {
+    return engine.complete(_summaryMessages(snapshot),
+        temperature: 0.5, maxTokens: 420);
+  }
+
+  /// 流式版月度总结，供 UI 逐字上屏。
+  Stream<String> monthlySummaryStream(AiLedgerSnapshot snapshot) {
+    return engine.streamChat(_summaryMessages(snapshot),
+        temperature: 0.5, maxTokens: 420);
+  }
+
+  Future<String> spendingInsight(AiLedgerSnapshot snapshot) {
+    return engine.complete(_insightMessages(snapshot),
+        temperature: 0.5, maxTokens: 420);
+  }
+
+  /// 流式版消费洞察。
+  Stream<String> spendingInsightStream(AiLedgerSnapshot snapshot) {
+    return engine.streamChat(_insightMessages(snapshot),
+        temperature: 0.5, maxTokens: 420);
+  }
+
+  Future<String> answer(String question, AiLedgerSnapshot snapshot) {
+    return engine.complete(_answerMessages(question, snapshot),
+        temperature: 0.4, maxTokens: 480);
+  }
+
+  /// 流式版账本问答。
+  Stream<String> answerStream(String question, AiLedgerSnapshot snapshot) {
+    return engine.streamChat(_answerMessages(question, snapshot),
+        temperature: 0.4, maxTokens: 480);
   }
 
   static BillDraft _parseBillDraft(
@@ -179,7 +195,8 @@ JSON 字段：
     List<String> categoryNames,
     DateTime today,
   ) {
-    var text = raw.trim();
+    // Qwen3 等模型可能先输出 <think> 块；块内也可能出现花括号，必须先剔除。
+    var text = sanitizeAiText(raw);
     if (text.startsWith('```')) {
       text = text.replaceFirst(RegExp(r'^```[a-zA-Z]*\s*'), '');
       text = text.replaceFirst(RegExp(r'\s*```$'), '');
@@ -248,8 +265,16 @@ JSON 字段：
 final aiEngineProvider = Provider<AiEngine>((ref) {
   final mode = ref.watch(aiModeProvider);
   if (mode == AiMode.local) {
-    final path = ref.watch(aiLocalModelFileProvider).valueOrNull ?? '';
-    return LocalAiEngine(modelPath: path);
+    // 直接使用已校验完成的模型状态，避免 aiLocalModelFileProvider 尚未
+    // 就绪时拿到空路径（真机首问出现过该竞态）。
+    final info = ref.watch(localModelStatusProvider).valueOrNull;
+    final path = info?.status == LocalModelStatus.ready
+        ? (info?.path ?? '')
+        : '';
+    return LocalAiEngine(
+      modelPath: path,
+      useGpu: ref.watch(aiGpuEnabledProvider),
+    );
   }
   return CloudAiEngine(
     baseUrl: ref.watch(aiBaseUrlProvider),
@@ -297,6 +322,22 @@ final aiOcrServiceProvider = Provider<AiOcrService>((ref) {
     ),
   );
 });
+
+/// 把 AI 返回的分类名匹配到本地分类：优先名称完全一致且收支类型一致，
+/// 否则回退到同类型的第一个可用分类；没有同类型分类时返回 null。
+Category? matchBillCategory(
+  List<Category> categories,
+  String kind,
+  String categoryName,
+) {
+  Category? fallback;
+  for (final category in categories) {
+    if (category.kind != kind) continue;
+    fallback ??= category;
+    if (category.name == categoryName) return category;
+  }
+  return fallback;
+}
 
 /// 由当前分类与交易构造给 AI 的紧凑快照。
 AiLedgerSnapshot buildSnapshot({

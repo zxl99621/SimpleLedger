@@ -6,16 +6,16 @@ import '../../ai/simple/ai_engine.dart';
 import '../../ai/simple/ai_providers.dart';
 import '../../ai/simple/ai_service.dart';
 import '../../ai/simple/ai_settings.dart';
+import '../../ai/simple/ai_text_utils.dart';
+import '../../ai/simple/local_ai_engine.dart';
+import '../../providers.dart';
+import '../../providers/budget_providers.dart';
 import '../../theme.dart';
+import '../../widgets/ui/keyboard_layout_scope.dart';
 import '../main/simple_stats_page.dart';
+import 'ai_message_list.dart';
+import 'bill_confirm_bar.dart';
 import 'simple_ai_settings_page.dart';
-
-class _ChatItem {
-  _ChatItem({required this.fromUser, required this.text});
-
-  final bool fromUser;
-  String text;
-}
 
 class SimpleAiPage extends ConsumerStatefulWidget {
   const SimpleAiPage({super.key});
@@ -27,12 +27,17 @@ class SimpleAiPage extends ConsumerStatefulWidget {
 class _SimpleAiPageState extends ConsumerState<SimpleAiPage> {
   final _inputController = TextEditingController();
   final _scrollController = ScrollController();
-  final List<_ChatItem> _messages = [];
+  final List<AiChatItem> _messages = [];
   bool _busy = false;
   bool _guideShown = false;
 
   /// 每次请求的序号；用户点“停止”或发起新请求后，旧请求的结果不再写回界面。
   int _requestSerial = 0;
+
+  /// AI 解析出的待确认账单；非 null 时在输入框上方显示确认条。
+  PendingBill? _pendingBill;
+
+  int? _lastLoadPercent;
 
   bool _tabVisible = false;
 
@@ -64,10 +69,30 @@ class _SimpleAiPageState extends ConsumerState<SimpleAiPage> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    LocalAiManager.instance.status.addListener(_onLocalStatus);
+  }
+
+  @override
   void dispose() {
+    LocalAiManager.instance.status.removeListener(_onLocalStatus);
     _inputController.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  /// 本地模型首次加载时把百分比写进当前助手气泡，避免“正在思考…”长时间无反馈。
+  void _onLocalStatus() {
+    if (!mounted || ref.read(aiModeProvider) != AiMode.local) return;
+    final status = LocalAiManager.instance.status.value;
+    if (!status.isLoading || _messages.isEmpty) return;
+    final percent = (status.progress * 100).round();
+    if (percent == _lastLoadPercent) return;
+    _lastLoadPercent = percent;
+    final last = _messages.last;
+    if (last.fromUser) return;
+    setState(() => last.text = '首次加载模型 $percent%…');
   }
 
   Future<void> _maybeShowGuide() async {
@@ -123,27 +148,53 @@ class _SimpleAiPageState extends ConsumerState<SimpleAiPage> {
     );
   }
 
-  Future<void> _run(
-    String label,
-    Future<String> Function(bool Function() isActive) task,
+  /// 消费流式输出，逐段更新同一条助手气泡。
+  Future<void> _runStreaming(
+    Future<Stream<String>> Function(bool Function() isActive) open,
   ) async {
     if (_busy) return;
     final serial = ++_requestSerial;
-    setState(() => _busy = true);
-    final item = _ChatItem(fromUser: false, text: '正在思考…');
-    _messages.add(item);
+    _lastLoadPercent = null;
+    final item = AiChatItem(fromUser: false, text: '正在思考…');
+    setState(() {
+      _busy = true;
+      _messages.add(item);
+    });
     _scrollToBottom();
+
+    final buffer = StringBuffer();
+    var lastUpdate = DateTime.now();
     try {
-      final result = await task(() => mounted && serial == _requestSerial);
+      final stream = await open(() => mounted && serial == _requestSerial);
+      await for (final chunk in stream) {
+        if (!mounted || serial != _requestSerial) break;
+        buffer.write(chunk);
+        // 每 60ms 最多刷新一次，避免每个 token 重建整页。
+        final now = DateTime.now();
+        if (now.difference(lastUpdate).inMilliseconds >= 60) {
+          lastUpdate = now;
+          setState(() => item.text = sanitizeAiStreamText(buffer.toString()));
+          _scrollToBottom();
+        }
+      }
       if (!mounted || serial != _requestSerial) return;
-      setState(() => item.text = result.trim().isEmpty ? '（AI 没有返回内容）' : result.trim());
+      final text = sanitizeAiStreamText(buffer.toString());
+      setState(() => item.text = text.isEmpty ? '（AI 没有返回内容）' : text);
     } catch (error) {
       if (!mounted || serial != _requestSerial) return;
-      setState(() => item.text = error is AiCancelled
-          ? '已停止'
-          : error is AiException
-              ? error.message
-              : '出错了：$error');
+      final partial = sanitizeAiStreamText(buffer.toString());
+      setState(() {
+        if (partial.isEmpty) {
+          item.text = error is AiCancelled
+              ? '已停止'
+              : error is AiException
+                  ? error.message
+                  : '出错了：$error';
+        } else {
+          item.text =
+              '$partial\n\n${error is AiCancelled ? '（已停止）' : '（生成中断）'}';
+        }
+      });
     } finally {
       if (mounted && serial == _requestSerial) {
         setState(() => _busy = false);
@@ -160,30 +211,97 @@ class _SimpleAiPageState extends ConsumerState<SimpleAiPage> {
       return;
     }
     _inputController.clear();
+    if (looksLikeBillIntent(question)) {
+      await _parseBillCommand(question);
+      return;
+    }
+    _pendingBill = null;
+    setState(() =>
+        _messages.add(AiChatItem(fromUser: true, text: question)));
+
+    await _runStreaming((isActive) async {
+      final snapshot = await _buildSnapshot(wideRange: true);
+      if (!isActive()) throw const AiCancelled();
+      return ref.read(aiServiceProvider).answerStream(question, snapshot);
+    });
+  }
+
+  Future<void> _runFeature(String kind) async {
+    if (_busy) return;
+    if (!ref.read(aiReadyProvider)) {
+      _openSettings();
+      return;
+    }
+    switch (kind) {
+      case 'summary':
+        setState(() => _messages
+            .add(AiChatItem(fromUser: true, text: '帮我总结本月消费')));
+        await _runStreaming((isActive) async {
+          final snapshot = await _buildSnapshot();
+          if (!isActive()) throw const AiCancelled();
+          return ref.read(aiServiceProvider).monthlySummaryStream(snapshot);
+        });
+        break;
+      case 'insight':
+        setState(() => _messages
+            .add(AiChatItem(fromUser: true, text: '看看我的消费习惯')));
+        await _runStreaming((isActive) async {
+          final snapshot = await _buildSnapshot();
+          if (!isActive()) throw const AiCancelled();
+          return ref.read(aiServiceProvider).spendingInsightStream(snapshot);
+        });
+        break;
+    }
+  }
+
+  /// 把一句话记账输入交给 parseBill，解析成功后显示确认条。
+  Future<void> _parseBillCommand(String text) async {
     final serial = ++_requestSerial;
+    _lastLoadPercent = null;
     setState(() {
-      _messages.add(_ChatItem(fromUser: true, text: question));
-      _messages.add(_ChatItem(fromUser: false, text: '正在思考…'));
+      _pendingBill = null;
+      _messages.add(AiChatItem(fromUser: true, text: text));
+      _messages.add(AiChatItem(fromUser: false, text: '正在解析账单…'));
+      _busy = true;
     });
     _scrollToBottom();
     final placeholder = _messages.last;
 
-    setState(() => _busy = true);
     try {
-      final snapshot = await _buildSnapshot(wideRange: true);
-      // 用户在统计快照加载期间点了“停止”：不要再发起网络请求。
+      final categories = await ref.read(categoriesProvider.future);
+      final usable = categories
+          .where((c) => c.kind == 'expense' || c.kind == 'income')
+          .toList();
+      final draft = await ref.read(aiServiceProvider).parseBill(
+            text,
+            categoryNames: [for (final c in usable) c.name],
+          );
       if (!mounted || serial != _requestSerial) return;
-      final answer = await ref.read(aiServiceProvider).answer(question, snapshot);
-      if (!mounted || serial != _requestSerial) return;
-      setState(() => placeholder.text =
-          answer.trim().isEmpty ? '（AI 没有返回内容）' : answer.trim());
+
+      final category = matchBillCategory(usable, draft.type, draft.categoryName);
+      if (category == null) {
+        throw const AiException('没有可用分类，请先在设置中创建分类');
+      }
+
+      setState(() {
+        placeholder.text =
+            '识别为${draft.type == 'income' ? '收入' : '支出'}：'
+            '¥${draft.amount.toStringAsFixed(2)} · ${category.name}'
+            '${draft.note.trim().isEmpty ? '' : ' · ${draft.note.trim()}'}';
+        _pendingBill = PendingBill(
+          amount: draft.amount,
+          type: draft.type,
+          category: category,
+          date: draft.date,
+          note: draft.note,
+        );
+      });
     } catch (error) {
       if (!mounted || serial != _requestSerial) return;
-      setState(() => placeholder.text = error is AiCancelled
-          ? '已停止'
-          : error is AiException
-              ? error.message
-              : '出错了：$error');
+      setState(() {
+        placeholder.text =
+            error is AiException ? error.message : '解析失败：$error';
+      });
     } finally {
       if (mounted && serial == _requestSerial) {
         setState(() => _busy = false);
@@ -192,37 +310,75 @@ class _SimpleAiPageState extends ConsumerState<SimpleAiPage> {
     }
   }
 
-  void _runFeature(String kind) {
-    if (_busy) return;
-    if (!ref.read(aiReadyProvider)) {
-      _openSettings();
-      return;
+  /// 与记账编辑器一致的默认账户选择：类型匹配、未隐藏、币种一致。
+  Future<int?> _defaultAccountId(String kind, int ledgerId) async {
+    try {
+      final id = kind == 'income'
+          ? await ref.read(defaultIncomeAccountIdProvider.future)
+          : await ref.read(defaultExpenseAccountIdProvider.future);
+      if (id == null) return null;
+      final ledger = await ref.read(ledgerByIdProvider(ledgerId).future);
+      if (ledger == null) return null;
+      final account = await ref.read(accountByIdProvider(id).future);
+      if (account == null || account.hidden) return null;
+      if (account.currency != ledger.currency) return null;
+      return id;
+    } catch (_) {
+      return null;
     }
-    switch (kind) {
-      case 'summary':
-        setState(() => _messages.add(_ChatItem(fromUser: true, text: '帮我总结本月消费')));
-        _run('summary', (isActive) async {
-          final snapshot = await _buildSnapshot();
-          if (!isActive()) throw const AiCancelled();
-          return ref.read(aiServiceProvider).monthlySummary(snapshot);
-        });
-        break;
-      case 'insight':
-        setState(() => _messages.add(_ChatItem(fromUser: true, text: '看看我的消费习惯')));
-        _run('insight', (isActive) async {
-          final snapshot = await _buildSnapshot();
-          if (!isActive()) throw const AiCancelled();
-          return ref.read(aiServiceProvider).spendingInsight(snapshot);
-        });
-        break;
+  }
+
+  Future<void> _savePendingBill() async {
+    final bill = _pendingBill;
+    if (bill == null || _busy) return;
+
+    setState(() => _busy = true);
+    try {
+      final ledgerId = ref.read(currentLedgerIdProvider);
+      final accountId = await _defaultAccountId(bill.type, ledgerId);
+      await ref.read(repositoryProvider).addTransaction(
+            ledgerId: ledgerId,
+            type: bill.type,
+            amount: bill.amount,
+            categoryId: bill.category.id >= 0 ? bill.category.id : null,
+            happenedAt: bill.date,
+            note: bill.note.trim().isEmpty ? null : bill.note.trim(),
+            accountId: accountId,
+          );
+      ref.invalidate(countsForLedgerProvider(ledgerId));
+      ref.read(statsRefreshProvider.notifier).state++;
+      ref.read(budgetRefreshProvider.notifier).state++;
+      if (!mounted) return;
+      setState(() {
+        _pendingBill = null;
+        _messages.add(AiChatItem(
+          fromUser: false,
+          text: '已记账：${bill.typeLabel} ¥${bill.amount.toStringAsFixed(2)}'
+              ' · ${bill.category.name}',
+        ));
+      });
+      _scrollToBottom();
+      updateAppWidget(ref, context);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _messages.add(AiChatItem(
+          fromUser: false,
+          text: error is AiException ? error.message : '保存失败：$error',
+        ));
+      });
+      _scrollToBottom();
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_scrollController.hasClients) return;
+      // 消息列表 reverse: true，offset 0 即视觉底部。
       _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent,
+        0,
         duration: const Duration(milliseconds: 220),
         curve: Curves.easeOut,
       );
@@ -245,6 +401,9 @@ class _SimpleAiPageState extends ConsumerState<SimpleAiPage> {
     final muted = isDark ? const Color(0xFF8A938C) : const Color(0xFF6B7169);
     final mode = ref.watch(aiModeProvider);
     final ready = ref.watch(aiReadyProvider);
+    final localStatus = mode == AiMode.local
+        ? ref.watch(localModelStatusProvider).valueOrNull
+        : null;
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -291,7 +450,11 @@ class _SimpleAiPageState extends ConsumerState<SimpleAiPage> {
               ),
             ),
             if (!ready)
-              _SetupCard(onTap: _openSettings, muted: muted)
+              _SetupCard(
+                onTap: _openSettings,
+                muted: muted,
+                message: localStatus?.reason,
+              )
             else
               Expanded(
                 child: _messages.isEmpty
@@ -305,32 +468,41 @@ class _SimpleAiPageState extends ConsumerState<SimpleAiPage> {
                           _sendQuestion();
                         },
                       )
-                    : ListView.builder(
+                    : AiMessageList(
+                        items: _messages,
+                        busy: _busy,
+                        ink: ink,
+                        muted: muted,
                         controller: _scrollController,
-                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                        itemCount: _messages.length,
-                        itemBuilder: (context, index) {
-                          final item = _messages[index];
-                          return _Bubble(
-                            item: item,
-                            ink: ink,
-                            muted: muted,
-                            busy: _busy && index == _messages.length - 1,
-                          );
-                        },
                       ),
+              ),
+            if (_pendingBill != null)
+              BillConfirmBar(
+                bill: _pendingBill!,
+                saving: _busy,
+                onSave: _savePendingBill,
+                onCancel: () => setState(() => _pendingBill = null),
               ),
             _InputBar(
               controller: _inputController,
               busy: _busy,
               onSend: _sendQuestion,
-              onStop: () {
+              onStop: () async {
                 _requestSerial++;
-                ref.read(aiEngineProvider).cancel();
+                setState(() {
+                  if (_messages.isNotEmpty &&
+                      (_messages.last.text == '正在思考…' ||
+                          _messages.last.text == '正在解析账单…')) {
+                    _messages.last.text = '正在停止…';
+                  }
+                });
+                // 等原生生成循环真正退出后再允许下一次发送。
+                await ref.read(aiEngineProvider).cancel();
+                if (!mounted) return;
                 setState(() {
                   _busy = false;
                   if (_messages.isNotEmpty &&
-                      _messages.last.text == '正在思考…') {
+                      _messages.last.text == '正在停止…') {
                     _messages.last.text = '已停止';
                   }
                 });
@@ -477,64 +649,6 @@ class _QuickAction extends StatelessWidget {
   }
 }
 
-class _Bubble extends StatelessWidget {
-  const _Bubble({
-    required this.item,
-    required this.ink,
-    required this.muted,
-    required this.busy,
-  });
-
-  final _ChatItem item;
-  final Color ink;
-  final Color muted;
-  final bool busy;
-
-  @override
-  Widget build(BuildContext context) {
-    final primary = Theme.of(context).colorScheme.primary;
-    if (item.fromUser) {
-      return Align(
-        alignment: Alignment.centerRight,
-        child: Container(
-          margin: const EdgeInsets.only(top: 12, left: 48),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: BoxDecoration(
-            color: primary,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Text(
-            item.text,
-            style: const TextStyle(fontSize: 14, height: 1.5, color: Colors.white),
-          ),
-        ),
-      );
-    }
-    return Padding(
-      padding: const EdgeInsets.only(top: 16, right: 32),
-      child: item.text == '正在思考…' && busy
-          ? Row(
-              children: [
-                SizedBox(
-                  width: 14,
-                  height: 14,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: primary,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text('正在思考…', style: TextStyle(fontSize: 13, color: muted)),
-              ],
-            )
-          : SelectableText(
-              item.text,
-              style: TextStyle(fontSize: 14, height: 1.7, color: ink),
-            ),
-    );
-  }
-}
-
 class _InputBar extends StatelessWidget {
   const _InputBar({
     required this.controller,
@@ -551,9 +665,18 @@ class _InputBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    // 外层 Scaffold 会消费键盘 inset，页面内 viewInsets 可能恒为 0；
+    // 优先读取外壳下发的键盘/导航布局状态。
+    final scope = KeyboardLayoutScope.maybeOf(context);
+    final keyboardOpen = scope?.keyboardOpen ??
+        (MediaQuery.viewInsetsOf(context).bottom > 0);
+    final navHeight = scope?.bottomNavHeight ?? 0;
+    final bottomPadding = keyboardOpen
+        ? 8.0
+        : MediaQuery.paddingOf(context).bottom +
+            (navHeight > 0 ? navHeight : 8);
     return Padding(
-      padding: EdgeInsets.fromLTRB(
-          16, 8, 16, MediaQuery.of(context).padding.bottom + 84),
+      padding: EdgeInsets.fromLTRB(16, 8, 16, bottomPadding),
       child: Row(
         children: [
           Expanded(
@@ -597,10 +720,15 @@ class _InputBar extends StatelessWidget {
 }
 
 class _SetupCard extends StatelessWidget {
-  const _SetupCard({required this.onTap, required this.muted});
+  const _SetupCard({
+    required this.onTap,
+    required this.muted,
+    this.message,
+  });
 
   final VoidCallback onTap;
   final Color muted;
+  final String? message;
 
   @override
   Widget build(BuildContext context) {
@@ -628,6 +756,14 @@ class _SetupCard extends StatelessWidget {
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 13, height: 1.5, color: muted),
               ),
+              if (message != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  message!,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 12, height: 1.5, color: error),
+                ),
+              ],
               const SizedBox(height: 20),
               FilledButton(
                 onPressed: onTap,

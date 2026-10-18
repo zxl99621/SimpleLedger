@@ -1,12 +1,19 @@
 # 第三方组件声明 / Third-Party Notices
 
-本仓库源码**不包含（vendor）任何第三方库的源代码**。所有第三方依赖由 `pubspec.yaml` / `pubspec.lock` 声明，在构建时经 pub 从官方源获取，各自按其原始开源协议授权，与本项目的 [LICENSE](LICENSE)（双许可）相互独立。使用、分发或基于本项目二次开发时，请一并遵守下列组件各自的协议。
+除下方「Vendored components」列出的组件外，本仓库源码**不包含（vendor）任何第三方库的源代码**。其余第三方依赖由 `pubspec.yaml` / `pubspec.lock` 声明，在构建时经 pub 从官方源获取，各自按其原始开源协议授权，与本项目的 [LICENSE](LICENSE)（双许可）相互独立。使用、分发或基于本项目二次开发时，请一并遵守下列组件各自的协议。
 
 `packages/` 目录下的 `flutter_ai_kit*` 与 `flutter_cloud_sync*` 系列为本项目自研组件，属许可软件本体、受项目 LICENSE 约束，**不属于第三方组件**。
 
+## Vendored components
+
+- `packages/llama_flutter_android` — MIT，Copyright (c) 2025 dragneel2074；本项目在其基础上启用了 Vulkan 后端。
+  - 其中 `android/src/main/cpp/llama.cpp` — MIT，Copyright (c) 2023-2026 The ggml authors。
+  - `third_party/vulkan`（Vulkan-Headers）— Khronos 许可（Apache-2.0 / MIT 混合），见该目录 `LICENSE.md`。
+  - `third_party/spirv`（SPIRV-Headers）— Khronos 许可（MIT 为主），见该目录 `LICENSE`。
+
 > 以下清单基于各包发布物中的 LICENSE 文本核验（2026-07 整理，共 51 个第三方直接依赖，**无 GPL / LGPL / AGPL 项**）。传递依赖可用 `flutter pub deps` 查看；如与上游申明不符，以上游为准。
 >
-> **English**: This repository does **not vendor** any third-party source code. All dependencies are declared in `pubspec.yaml` / `pubspec.lock` and fetched by pub at build time under their own licenses, independent of this project's dual [LICENSE](LICENSE_EN). Packages under `packages/` (`flutter_ai_kit*`, `flutter_cloud_sync*`) are first-party components covered by the project LICENSE. The list below was verified against each package's published LICENSE text (as of 2026-07, 51 direct third-party dependencies, **no GPL / LGPL / AGPL**); upstream prevails in case of discrepancy.
+> **English**: Except for the components listed under "Vendored components" above, this repository does **not vendor** any third-party source code. All other dependencies are declared in `pubspec.yaml` / `pubspec.lock` and fetched by pub at build time under their own licenses, independent of this project's dual [LICENSE](LICENSE_EN). First-party packages under `packages/` (`flutter_ai_kit*`, `flutter_cloud_sync*`) are covered by the project LICENSE. The list below was verified against each package's published LICENSE text (as of 2026-07, 51 direct third-party dependencies, **no GPL / LGPL / AGPL**); upstream prevails in case of discrepancy.
 
 ## 直接依赖 / Direct dependencies
 

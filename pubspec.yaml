@@ -1,7 +1,7 @@
 name: beecount
 description: "极简记账 - 本地优先的个人记账工具"
 publish_to: 'none'
-version: 1.1.4+7
+version: 1.1.5+8
 
 environment:
   sdk: ^3.6.0
@@ -47,8 +47,10 @@ dependencies:
   app_links: ^6.4.1
   yaml: ^3.1.2
   archive: ^3.6.1
-  # 本地 GGUF 推理（Android 专属插件，底层 llama.cpp）
-  llama_flutter_android: ^0.2.6
+  # 本地 GGUF 推理（Android 专属插件，底层 llama.cpp）。
+  # vendored fork：启用 GGML_VULKAN + 内置 Vulkan/SPIRV headers。
+  llama_flutter_android:
+    path: packages/llama_flutter_android
   # API Key 加密存储（Android Keystore / EncryptedSharedPreferences）
   flutter_secure_storage: ^10.3.4
   quick_actions: ^1.1.0

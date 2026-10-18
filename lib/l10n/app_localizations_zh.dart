@@ -179,7 +179,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aboutChangelog => '更新日志';
 
   @override
-  String get appTitle => '蜜蜂记账';
+  String get appTitle => '极简记账';
 
   @override
   String get tabHome => '明细';
@@ -8937,7 +8937,7 @@ class AppLocalizationsZhTw extends AppLocalizationsZh {
   String get aboutChangelog => '更新日誌';
 
   @override
-  String get appTitle => '蜜蜂記帳';
+  String get appTitle => '極簡記帳';
 
   @override
   String get tabHome => '明細';

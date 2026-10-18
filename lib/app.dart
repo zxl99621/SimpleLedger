@@ -14,6 +14,7 @@ import 'theme.dart';
 import 'l10n/app_localizations.dart';
 import 'widget/widget_manager.dart';
 import 'widgets/ui/ui.dart';
+import 'widgets/ui/keyboard_layout_scope.dart';
 import 'widgets/ui/speed_dial_fab.dart';
 import 'utils/image_billing_helper.dart';
 import 'pages/ai/simple_ai_page.dart';
@@ -511,7 +512,6 @@ class _BeeAppState extends ConsumerState<BeeApp>
       final ledgerId = ref.read(currentLedgerIdProvider);
       final primaryColor = ref.read(primaryColorProvider);
       final redForIncome = ref.read(incomeExpenseColorSchemeProvider);
-      final baseCurrency = ref.read(baseCurrencyProvider);
 
       final widgetManager = WidgetManager();
       // 前台恢复路径也走本地化封装,让小组件文案跟随 App 语言(与
@@ -523,7 +523,6 @@ class _BeeAppState extends ConsumerState<BeeApp>
         primaryColor,
         explicitLocale: ref.read(languageProvider),
         redForIncome: redForIncome,
-        baseCurrency: baseCurrency,
         warmUpAllSpecs: warmUpAll,
       );
       logger.info(
@@ -542,6 +541,9 @@ class _BeeAppState extends ConsumerState<BeeApp>
     final primaryColor = ref.watch(primaryColorProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bottomPadding = MediaQuery.of(context).padding.bottom;
+    // 键盘弹出时隐藏悬浮底部导航栏，否则它会占据键盘上方约 84px，
+    // AI 输入框与键盘之间会出现大块空白。
+    final keyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
     // 头部皮肤可附带悬浮 tab 装饰层(如一周年皮肤),随皮肤选择联动。
     final headerSkin = headerSkinById(ref.watch(headerSkinProvider));
 
@@ -571,14 +573,20 @@ class _BeeAppState extends ConsumerState<BeeApp>
             // TickerMode 关掉后,非当前页的 AnimationController 被 mute(仍
             // isAnimating,只是不再 tick),切回来自动恢复。动态皮肤是最先
             // 暴露这个问题的,但收益覆盖所有页内动画。
-            body: IndexedStack(
-              index: idx,
-              children: [
-                for (var i = 0; i < _pages.length; i++)
-                  TickerMode(enabled: i == idx, child: _pages[i]),
-              ],
+            body: KeyboardLayoutScope(
+              keyboardOpen: keyboardOpen,
+              bottomNavHeight: keyboardOpen ? 0 : 84,
+              child: IndexedStack(
+                index: idx,
+                children: [
+                  for (var i = 0; i < _pages.length; i++)
+                    TickerMode(enabled: i == idx, child: _pages[i]),
+                ],
+              ),
             ),
-            bottomNavigationBar: _BeeBottomBar(
+            bottomNavigationBar: keyboardOpen
+                ? null
+                : _BeeBottomBar(
               currentIndex: idx,
               primaryColor: primaryColor,
               isDark: isDark,

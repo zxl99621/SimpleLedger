@@ -8,6 +8,7 @@ import '../../ai/simple/ai_engine.dart';
 import '../../ai/simple/ai_providers.dart';
 import '../../ai/simple/ai_settings.dart';
 import '../../ai/simple/cloud_ai_engine.dart';
+import '../../ai/simple/gpu_support.dart';
 import '../../ai/simple/local_ai_engine.dart';
 import '../../ai/simple/model_downloader.dart';
 import '../../styles/tokens.dart';
@@ -185,10 +186,14 @@ class _SimpleAiSettingsPageState extends ConsumerState<SimpleAiSettingsPage> {
     final controller = LlamaController();
     try {
       final gpu = await controller.detectGpu();
+      final offload = await supportsGpuOffload();
+      final isMali = gpu.gpuName.toLowerCase().contains('mali');
       if (!mounted) return;
       setState(() {
         _gpuInfo = gpu.vulkanSupported
-            ? '${gpu.gpuName} · Vulkan 可用 · 推荐 ${gpu.recommendedGpuLayers} 层 GPU 卸载'
+            ? '${gpu.gpuName} · Vulkan 可用 · '
+                '${isMali ? 'Mali 驱动暂强制 CPU' : 'GPU 推理后端 ${offload ? '已启用' : '未启用（CPU）'}'} · '
+                '推荐 ${gpu.recommendedGpuLayers} 层卸载'
             : '未检测到可用 Vulkan，使用 CPU 推理';
       });
     } catch (error) {
@@ -353,6 +358,34 @@ class _SimpleAiSettingsPageState extends ConsumerState<SimpleAiSettingsPage> {
               _modelCard(model, selectedId, modelDir),
               const SizedBox(height: 10),
             ],
+            if (selectedId == 'qwen3-0.6b')
+              Padding(
+                padding: const EdgeInsets.fromLTRB(4, 0, 4, 10),
+                child: Text(
+                  '0.6B 适合一句话记账解析（规则分流 + 结构化 JSON）；'
+                  '问答、总结与洞察建议选择 1.7B 或 4B。',
+                  style: TextStyle(
+                    fontSize: 11,
+                    height: 1.5,
+                    color: BeeTokens.textTertiary(context),
+                  ),
+                ),
+              ),
+            SwitchListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+              title: const Text('GPU 加速（Vulkan，实验）'),
+              subtitle: const Text(
+                '默认关闭；移动端 Vulkan 后端不稳定（Mali 实测会崩溃），开启后 Mali 仍强制 CPU。',
+              ),
+              value: ref.watch(aiGpuEnabledProvider),
+              onChanged: (value) {
+                ref.read(aiGpuEnabledProvider.notifier).state = value;
+                if (value) {
+                  // 用户主动重新开启时，允许本会话再次尝试 GPU。
+                  LocalAiManager.instance.onUserEnabledGpu();
+                }
+              },
+            ),
             Row(
               children: [
                 Expanded(

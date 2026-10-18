@@ -179,7 +179,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get aboutChangelog => '更新日志';
 
   @override
-  String get appTitle => '꿀벌 가계부';
+  String get appTitle => '간편 가계부';
 
   @override
   String get tabHome => '홈';

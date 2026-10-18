@@ -17,16 +17,6 @@ void main() {
 
     test('其余 spec 一律 widget_<type>_<size>', () {
       expect(WidgetSpec.glanceSmall.imageKey, 'widget_glance_small');
-      expect(WidgetSpec.netWorthSmall.imageKey, 'widget_netWorth_small');
-      expect(WidgetSpec.netWorthMedium.imageKey, 'widget_netWorth_medium');
-      expect(WidgetSpec.netWorthLarge.imageKey, 'widget_netWorth_large');
-      expect(WidgetSpec.quickAddSmall.imageKey, 'widget_quickAdd_small');
-      expect(WidgetSpec.quickAddMedium.imageKey, 'widget_quickAdd_medium');
-      expect(WidgetSpec.budgetSmall.imageKey, 'widget_budget_small');
-      expect(WidgetSpec.budgetMedium.imageKey, 'widget_budget_medium');
-      expect(WidgetSpec.recentMedium.imageKey, 'widget_recent_medium');
-      expect(WidgetSpec.recentLarge.imageKey, 'widget_recent_large');
-      expect(WidgetSpec.dashboardLarge.imageKey, 'widget_dashboard_large');
     });
 
     test('目录内所有 imageKey 互不相同', () {
@@ -124,7 +114,7 @@ void main() {
   group('WidgetSpec 相等性', () {
     test('按 (type,size) 判等,忽略其它字段', () {
       // 与 glanceMedium 同 (type,size) 的手工构造实例应视为相等
-      expect(WidgetSpec.netWorthMedium == WidgetSpec.recentMedium, isFalse);
+      expect(WidgetSpec.glanceSmall == WidgetSpec.glanceMedium, isFalse);
       expect(WidgetSpec.glanceMedium == WidgetSpec.glanceMedium, isTrue);
     });
 

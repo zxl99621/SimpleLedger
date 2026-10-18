@@ -29,8 +29,11 @@ abstract class AiEngine {
     int maxTokens = 512,
   });
 
-  /// 停止当前生成。默认实现为空；云端引擎会真正关闭 HTTP 连接。
-  void cancel() {}
+  /// 停止当前生成，并在停止动作真正完成后返回。
+  ///
+  /// 本地引擎需要等待原生生成循环退出，避免旧生成尚未结束就启动新生成；
+  /// 云端引擎会关闭 HTTP 连接。
+  Future<void> cancel() async {}
 
   Future<String> complete(
     List<AiMessage> messages, {

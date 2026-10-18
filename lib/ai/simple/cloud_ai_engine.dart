@@ -22,7 +22,7 @@ class CloudAiEngine extends AiEngine {
   bool _cancelled = false;
 
   @override
-  void cancel() {
+  Future<void> cancel() async {
     _cancelled = true;
     _activeClient?.close();
     _activeClient = null;

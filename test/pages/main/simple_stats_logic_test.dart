@@ -18,11 +18,11 @@ void main() {
     test('浅色扇区使用深色文字', () {
       expect(
         readablePieLabelColor(const Color(0xFFEDA100)),
-        const Color(0xFF1B1F1C),
+        const Color(0xFF132220),
       );
       expect(
         readablePieLabelColor(const Color(0xFFFFFFFF)),
-        const Color(0xFF1B1F1C),
+        const Color(0xFF132220),
       );
     });
 
@@ -35,7 +35,7 @@ void main() {
       for (final color in _palette) {
         final chosen = readablePieLabelColor(color);
         final other = chosen == Colors.white
-            ? const Color(0xFF1B1F1C)
+            ? const Color(0xFF132220)
             : Colors.white;
         expect(
           contrastRatio(color, chosen),

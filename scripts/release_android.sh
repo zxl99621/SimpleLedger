@@ -8,6 +8,11 @@
 #
 # CI 可通过环境变量覆盖签名信息：
 #   KEYSTORE / STORE_PASS / KEY_ALIAS / KEY_PASS
+#
+# Windows 本地构建：Vulkan 的 host shader 生成器需要 MSVC，请在
+# "x64 Native Tools Command Prompt for VS 2022" 中运行，或先执行
+#   call "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat"
+# 否则构建会在 vulkan-shaders-gen 阶段失败。
 set -euo pipefail
 
 cd "$(dirname "$0")/.."

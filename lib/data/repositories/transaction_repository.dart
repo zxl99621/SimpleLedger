@@ -304,12 +304,11 @@ abstract class TransactionRepository {
   /// 最近 [limit] 笔交易(按 happenedAt 降序),纯 [Transaction] 行、无分类/账户
   /// join、不做任何 exclude 过滤。
   ///
-  /// 供桌面小组件「最近交易」类型取数用(`WidgetDataService.gatherRecent`,
-  /// `.docs/home-widget/plan.md` §一.3)。需要分类名/图标/账户名时由调用方
-  /// 按交易的 categoryId / accountId 自行查 CategoryRepository.getCategoryById /
-  /// AccountRepository.getAccount —— 与 [getRecentTransactionsWithCategory] 的
-  /// 区别:后者额外做了共享账本 override 的 synthetic 分类/账户 hydration,
-  /// 语义更重,小组件场景不需要。
+  /// 通用轻量查询 API(当前桌面小组件已裁剪为仅收支速览,不再使用)。
+  /// 需要分类名/图标/账户名时由调用方按交易的 categoryId / accountId 自行查
+  /// CategoryRepository.getCategoryById / AccountRepository.getAccount ——
+  /// 与 [getRecentTransactionsWithCategory] 的区别:后者额外做了共享账本
+  /// override 的 synthetic 分类/账户 hydration,语义更重。
   Future<List<Transaction>> getRecentTransactions(
     int ledgerId, {
     int limit = 10,

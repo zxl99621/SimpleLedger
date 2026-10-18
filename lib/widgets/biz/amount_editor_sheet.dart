@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -101,9 +100,7 @@ class _AmountEditorSheetState extends ConsumerState<AmountEditorSheet> {
   // 运算缓存：支持简单 + / - 键入累计
   double _acc = 0;
   String? _op; // 最近一次运算符，null 表示尚未进入运算模式
-  // 两个运算符键各自独立的模式(false=加/减,true=乘/除),长按各自切换,互不影响。
-  bool _mulKey1 = false; // 键1:+ ↔ ×
-  bool _mulKey2 = false; // 键2:− ↔ ÷
+  bool _calcExpanded = false; // 默认收起计算器，仅保留纯数字键盘
 
   // 高频备注列表（包含使用次数）
   List<NoteHistoryEntry> _frequentNotes = [];
@@ -116,7 +113,6 @@ class _AmountEditorSheetState extends ConsumerState<AmountEditorSheet> {
   bool _isSubmitting = false;
   bool _showMore = false; // 备注 / 图片 / 标签折叠面板
   bool _ocrRunning = false;
-  Timer? _finishTapTimer;
 
   // 已选标签ID列表
   late List<int> _selectedTagIds;
@@ -169,7 +165,6 @@ class _AmountEditorSheetState extends ConsumerState<AmountEditorSheet> {
 
   @override
   void dispose() {
-    _finishTapTimer?.cancel();
     _noteFocusNode.dispose();
     super.dispose();
   }
@@ -224,6 +219,53 @@ class _AmountEditorSheetState extends ConsumerState<AmountEditorSheet> {
       if (_amountStr.isEmpty) _amountStr = '0';
     });
     SystemSound.play(SystemSoundType.click);
+  }
+
+  /// 追加两位 0（键盘 "00" 键），保持金额格式合法。
+  void _appendZeroZero() {
+    setState(() {
+      if (_amountStr == '0') return;
+      if (_amountStr.contains('.')) {
+        final dot = _amountStr.indexOf('.');
+        final decimals = _amountStr.length - dot - 1;
+        if (decimals >= 2) return;
+        if (decimals == 1) _amountStr += '0';
+        return;
+      }
+      _amountStr += '00';
+    });
+    SystemSound.play(SystemSoundType.click);
+  }
+
+  String _formatAmount(double value) {
+    final s = value.abs().toStringAsFixed(2);
+    final trimmed = s.contains('.')
+        ? s.replaceFirst(RegExp(r'0+$'), '').replaceFirst(RegExp(r'\.$'), '')
+        : s;
+    return trimmed.isEmpty ? '0' : trimmed;
+  }
+
+  String _fmtDate(DateTime d) => '${d.year}/${d.month}/${d.day}';
+
+  String _fmtTime(DateTime d) =>
+      '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}:${d.second.toString().padLeft(2, '0')}';
+
+  /// 展开/收起计算器。收起时若还有未完成的运算，先算出结果，避免金额丢失。
+  void _toggleCalc() {
+    setState(() {
+      if (!_calcExpanded) {
+        _calcExpanded = true;
+        return;
+      }
+      if (_op != null) {
+        final cur = double.tryParse(_amountStr) ?? 0.0;
+        _amountStr = _formatAmount(_compute(_acc, _op!, cur));
+        _acc = 0;
+        _op = null;
+      }
+      _calcExpanded = false;
+    });
+    HapticFeedback.selectionClick();
   }
 
   void _submit({required bool continueAdding}) {
@@ -359,26 +401,10 @@ class _AmountEditorSheetState extends ConsumerState<AmountEditorSheet> {
       setState(() {});
     }
 
-    // 计算等号：完成当前运算，将结果存入 _amountStr，清空运算状态
-    void applyEquals() {
-      if (_op == null) return; // 没有运算符，不执行
-      final cur = parsed();
-      final total = _compute(_acc, _op!, cur);
-      // 格式化结果
-      final s = total.abs().toStringAsFixed(2);
-      final trimmed = s.contains('.')
-          ? s.replaceFirst(RegExp(r'0+$'), '').replaceFirst(RegExp(r'\.$'), '')
-          : s;
-      _amountStr = trimmed.isEmpty ? '0' : trimmed;
-      _acc = 0;
-      _op = null;
-      HapticFeedback.selectionClick();
-      SystemSound.play(SystemSoundType.click);
-      setState(() {});
-    }
-
-    Widget keyBtn(String label, {Color? bg, Color? fg, VoidCallback? onTap}) {
+    Widget keyBtn(String label,
+        {Key? key, Color? bg, Color? fg, VoidCallback? onTap}) {
       return Padding(
+        key: key,
         padding: const EdgeInsets.all(6),
         child: Material(
           color: bg ?? BeeTokens.surfaceKey(context),
@@ -403,68 +429,6 @@ class _AmountEditorSheetState extends ConsumerState<AmountEditorSheet> {
       );
     }
 
-    // 运算符键:同时显示「加减」与「乘除」两组运算符;当前激活的一组用主色高亮、
-    // 另一组用次级色弱化(主次区分,也作为"长按可切到乘除"的提示)。单击应用激活
-    // 运算符,长按切换加减 ↔ 乘除。
-    Widget opKey(String addSubOp, String mulDivOp, bool isMul,
-        VoidCallback onToggle) {
-      final activeOp = isMul ? mulDivOp : addSubOp;
-      // 激活的运算符与数字键完全一致(字号 18 / w600),保证视觉粗细相同 —— 字号
-      // 更大即使同 weight 笔画也会更粗。未激活更小(14)+ 灰色以分主次。
-      TextStyle opStyle(bool active) => text.titleMedium!.copyWith(
-            color: active
-                ? BeeTokens.textPrimary(context)
-                : BeeTokens.textTertiary(context),
-            fontSize: active ? 18 : 14,
-            fontWeight: FontWeight.w600,
-          );
-      return Padding(
-        padding: const EdgeInsets.all(6),
-        child: Material(
-          color: BeeTokens.surfaceKeySecondary(context),
-          borderRadius: BorderRadius.circular(12),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(12),
-            onTap: () => applyOp(activeOp),
-            // 双击 / 长按都是「切到另一组运算符并直接应用」(一步用上另一个);
-            // applyOp 内部已带触感/声音。
-            onDoubleTap: () {
-              onToggle();
-              applyOp(isMul ? addSubOp : mulDivOp);
-            },
-            onLongPress: () {
-              onToggle();
-              applyOp(isMul ? addSubOp : mulDivOp);
-            },
-            child: SizedBox(
-              height: 60,
-              // 「加减/乘除」中间一个斜杠分隔;单击用激活运算符,长按只切换本键(两键独立)。
-              child: Center(
-                child: Text.rich(
-                  TextSpan(children: [
-                    TextSpan(text: _opGlyph(addSubOp), style: opStyle(!isMul)),
-                    TextSpan(
-                      text: '/',
-                      style: text.titleMedium!.copyWith(
-                        color: BeeTokens.textTertiary(context),
-                        fontSize: 14,
-                        fontWeight: FontWeight.w400,
-                      ),
-                    ),
-                    TextSpan(text: _opGlyph(mulDivOp), style: opStyle(isMul)),
-                  ]),
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
-    String fmtDate(DateTime d) => '${d.year}/${d.month}/${d.day}';
-    String fmtTime(DateTime d) => '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}:${d.second.toString().padLeft(2, '0')}';
-    final showTime = ref.watch(showTransactionTimeProvider);
-
     return SafeArea(
       top: false,
       child: AnimatedPadding(
@@ -488,7 +452,7 @@ class _AmountEditorSheetState extends ConsumerState<AmountEditorSheet> {
                 Row(
                   children: [
                     const Spacer(),
-                    if (_op != null) ...[
+                    if (_calcExpanded && _op != null) ...[
                       // 显示累加值
                       Text(
                         (() {
@@ -524,10 +488,33 @@ class _AmountEditorSheetState extends ConsumerState<AmountEditorSheet> {
                         color: BeeTokens.textPrimary(context),
                       ),
                     ),
+                    // 计算器入口：默认收起，避免键盘被表达式/运算符占满。
+                    TextButton(
+                      key: const ValueKey('amount-calc-toggle'),
+                      onPressed: _toggleCalc,
+                      style: TextButton.styleFrom(
+                        minimumSize: const Size(36, 32),
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        foregroundColor: _calcExpanded
+                            ? primary
+                            : BeeTokens.textTertiary(context),
+                      ),
+                      child: Text(
+                        '=',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: _calcExpanded
+                              ? primary
+                              : BeeTokens.textTertiary(context),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
-                // 等号行：仅在有运算符时显示
-                if (_op != null) ...[
+                // 等号行：仅在展开计算器且存在运算符时显示
+                if (_calcExpanded && _op != null) ...[
                   const SizedBox(height: 4),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.end,
@@ -679,50 +666,6 @@ class _AmountEditorSheetState extends ConsumerState<AmountEditorSheet> {
             // 数字键盘
             LayoutBuilder(builder: (ctx, c) {
               final w = (c.maxWidth) / 4;
-              Widget dateKey() => Padding(
-                    padding: const EdgeInsets.all(6),
-                    child: Material(
-                      color: BeeTokens.surfaceKeySecondary(context),
-                      borderRadius: BorderRadius.circular(12),
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(12),
-                        onTap: () {
-                          SystemSound.play(SystemSoundType.click);
-                          _pickDate();
-                        },
-                        child: SizedBox(
-                          height: 60,
-                          child: Center(
-                            child: showTime
-                                ? Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Text(
-                                        fmtDate(_date),
-                                        style: text.labelSmall?.copyWith(
-                                            color: BeeTokens.textPrimary(context),
-                                            fontWeight: FontWeight.w600),
-                                      ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        fmtTime(_date),
-                                        style: text.labelSmall?.copyWith(
-                                            color: BeeTokens.textSecondary(context),
-                                            fontWeight: FontWeight.w500),
-                                      ),
-                                    ],
-                                  )
-                                : Text(
-                                    fmtDate(_date),
-                                    style: text.labelMedium?.copyWith(
-                                        color: BeeTokens.textPrimary(context),
-                                        fontWeight: FontWeight.w600),
-                                  ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  );
               Widget closeKey() => Padding(
                     padding: const EdgeInsets.all(6),
                     child: Material(
@@ -741,175 +684,130 @@ class _AmountEditorSheetState extends ConsumerState<AmountEditorSheet> {
                     ),
                   );
               Widget doneKey() {
-                // 计算当前总额以判断是否启用完成按钮
                 final cur = parsed();
                 final total = _op == null ? cur : _compute(_acc, _op!, cur);
-
-                // 判断是否处于运算模式
-                final isInCalcMode = _op != null;
-                final isEnabled = (isInCalcMode ? true : total.abs() > 0) && !_isSubmitting;
-
-                void handleTap() {
-                  if (isInCalcMode) {
-                    // 运算模式：点击等号计算结果，不触发连续记账。
-                    applyEquals();
-                    return;
-                  }
-
-                  if (!widget.allowContinueAdding) {
-                    _submit(continueAdding: false);
-                    return;
-                  }
-
-                  // 等待双击窗口：单击仍按原行为保存退出，双击保存后留在分类页。
-                  if (_finishTapTimer != null) {
-                    _finishTapTimer!.cancel();
-                    _finishTapTimer = null;
-                    _submit(continueAdding: true);
-                    return;
-                  }
-                  _finishTapTimer = Timer(const Duration(milliseconds: 300), () {
-                    _finishTapTimer = null;
-                    _submit(continueAdding: false);
-                  });
-                }
+                final isEnabled = total.abs() > 0 && !_isSubmitting;
 
                 return Padding(
                   padding: const EdgeInsets.all(6),
                   child: Material(
+                    key: const ValueKey('amount-done'),
                     color: isEnabled ? primary : BeeTokens.surfaceDisabled(context),
                     borderRadius: BorderRadius.circular(12),
                     child: InkWell(
                       borderRadius: BorderRadius.circular(12),
-                      onTap: isEnabled ? handleTap : null,
-                      child: SizedBox(
-                        height: 60,
-                        child: Center(
-                          child: _isSubmitting
-                              ? SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                  ),
-                                )
-                              : isInCalcMode
-                                  ? Text(
-                                      '=',
-                                      style: TextStyle(
-                                          color: isEnabled
-                                              ? Colors.white
-                                              : BeeTokens.textTertiary(context),
-                                          fontSize: 24,
-                                          fontWeight: FontWeight.w700),
-                                    )
-                                  : widget.allowContinueAdding
-                                      ? Column(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Text(
-                                              AppLocalizations.of(context)
-                                                  .commonFinish,
-                                              style: TextStyle(
-                                                  color: isEnabled
-                                                      ? Colors.white
-                                                      : BeeTokens.textTertiary(
-                                                          context),
-                                                  fontSize: 15,
-                                                  fontWeight: FontWeight.w700,
-                                                  height: 1.1),
-                                            ),
-                                            const SizedBox(height: 2),
-                                            Text(
-                                              AppLocalizations.of(context)
-                                                  .transactionDoubleTapHint,
-                                              style: TextStyle(
-                                                  color: isEnabled
-                                                      ? Colors.white70
-                                                      : BeeTokens.textTertiary(
-                                                          context),
-                                                  fontSize: 9,
-                                                  fontWeight: FontWeight.w500,
-                                                  height: 1),
-                                            ),
-                                          ],
-                                        )
-                                      : Text(
-                                          AppLocalizations.of(context)
-                                              .commonFinish,
-                                          style: TextStyle(
-                                              color: isEnabled
-                                                  ? Colors.white
-                                                  : BeeTokens.textTertiary(
-                                                      context),
-                                              fontSize: 16,
-                                              fontWeight: FontWeight.w700),
-                                        ),
-                        ),
+                      onTap: isEnabled
+                          ? () => _submit(continueAdding: false)
+                          : null,
+                      // 隐藏能力：长按保存并继续记下一笔；不再占用按钮文字。
+                      onLongPress: isEnabled && widget.allowContinueAdding
+                          ? () => _submit(continueAdding: true)
+                          : null,
+                      child: Container(
+                        alignment: Alignment.center,
+                        child: _isSubmitting
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor:
+                                      AlwaysStoppedAnimation<Color>(Colors.white),
+                                ),
+                              )
+                            : Text(
+                                AppLocalizations.of(context).commonFinish,
+                                style: TextStyle(
+                                    color: isEnabled
+                                        ? Colors.white
+                                        : BeeTokens.textTertiary(context),
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700),
+                              ),
                       ),
                     ),
                   ),
                 );
               }
 
+              Widget digitRow(String a, String b, String c) {
+                return Row(children: [
+                  SizedBox(width: w, child: keyBtn(a, onTap: () => _append(a))),
+                  SizedBox(width: w, child: keyBtn(b, onTap: () => _append(b))),
+                  SizedBox(width: w, child: keyBtn(c, onTap: () => _append(c))),
+                ]);
+              }
+
               return Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Row(children: [
-                    SizedBox(
-                        width: w,
-                        child: keyBtn('7', onTap: () => _append('7'))),
-                    SizedBox(
-                        width: w,
-                        child: keyBtn('8', onTap: () => _append('8'))),
-                    SizedBox(
-                        width: w,
-                        child: keyBtn('9', onTap: () => _append('9'))),
-                    SizedBox(width: w, child: dateKey()),
-                  ]),
-                  const SizedBox(height: 2),
-                  Row(children: [
-                    SizedBox(
-                        width: w,
-                        child: keyBtn('4', onTap: () => _append('4'))),
-                    SizedBox(
-                        width: w,
-                        child: keyBtn('5', onTap: () => _append('5'))),
-                    SizedBox(
-                        width: w,
-                        child: keyBtn('6', onTap: () => _append('6'))),
-                    SizedBox(
-                        width: w,
-                        child: opKey('+', '×', _mulKey1,
-                            () => setState(() => _mulKey1 = !_mulKey1))),
-                  ]),
-                  const SizedBox(height: 2),
-                  Row(children: [
-                    SizedBox(
-                        width: w,
-                        child: keyBtn('1', onTap: () => _append('1'))),
-                    SizedBox(
-                        width: w,
-                        child: keyBtn('2', onTap: () => _append('2'))),
-                    SizedBox(
-                        width: w,
-                        child: keyBtn('3', onTap: () => _append('3'))),
-                    SizedBox(
-                        width: w,
-                        child: opKey('-', '÷', _mulKey2,
-                            () => setState(() => _mulKey2 = !_mulKey2))),
-                  ]),
-                  const SizedBox(height: 2),
-                  Row(children: [
-                    SizedBox(
-                        width: w,
-                        child: keyBtn('.', onTap: () => _append('.'))),
-                    SizedBox(
-                        width: w,
-                        child: keyBtn('0', onTap: () => _append('0'))),
-                    SizedBox(width: w, child: closeKey()),
-                    SizedBox(width: w, child: doneKey()),
-                  ]),
+                  // 计算器默认收起；展开时在键盘上方增加一行运算符。
+                  if (_calcExpanded) ...[
+                    Row(
+                      children: [
+                        for (final glyph in const ['+', '−', '×', '÷'])
+                          Expanded(
+                            child: keyBtn(
+                              glyph,
+                              key: ValueKey('amount-op-$glyph'),
+                              bg: _op == (glyph == '−' ? '-' : glyph)
+                                  ? primary
+                                  : BeeTokens.surfaceKeySecondary(context),
+                              fg: _op == (glyph == '−' ? '-' : glyph)
+                                  ? Colors.white
+                                  : BeeTokens.textPrimary(context),
+                              onTap: () => applyOp(glyph == '−' ? '-' : glyph),
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                  ],
+                  SizedBox(
+                    height: 294,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        SizedBox(
+                          width: 3 * w,
+                          child: Column(
+                            children: [
+                              digitRow('7', '8', '9'),
+                              const SizedBox(height: 2),
+                              digitRow('4', '5', '6'),
+                              const SizedBox(height: 2),
+                              digitRow('1', '2', '3'),
+                              const SizedBox(height: 2),
+                              Row(children: [
+                                SizedBox(
+                                    width: w,
+                                    child: keyBtn('.',
+                                        onTap: () => _append('.'))),
+                                SizedBox(
+                                    width: w,
+                                    child: keyBtn('0',
+                                        onTap: () => _append('0'))),
+                                SizedBox(
+                                    width: w,
+                                    child: keyBtn('00',
+                                        onTap: _appendZeroZero)),
+                              ]),
+                            ],
+                          ),
+                        ),
+                        SizedBox(
+                          width: w,
+                          child: Column(
+                            children: [
+                              closeKey(),
+                              const SizedBox(height: 2),
+                              Expanded(child: doneKey()),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
               );
             })
@@ -938,11 +836,33 @@ class _AmountEditorSheetState extends ConsumerState<AmountEditorSheet> {
           ),
         ),
         const Spacer(),
-        Text(
-          '备注 · 图片 · 标签',
-          style: TextStyle(
-            fontSize: 11,
-            color: BeeTokens.textTertiary(context),
+        // 日期从键盘右侧移到标题行，点击仍打开日期/时间选择器。
+        InkWell(
+          key: const ValueKey('amount-date-chip'),
+          onTap: _pickDate,
+          borderRadius: BorderRadius.circular(10),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.calendar_today_outlined,
+                  size: 14,
+                  color: BeeTokens.textSecondary(context),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  ref.watch(showTransactionTimeProvider)
+                      ? '${_fmtDate(_date)} ${_fmtTime(_date)}'
+                      : _fmtDate(_date),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: BeeTokens.textSecondary(context),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ],

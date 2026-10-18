@@ -5,7 +5,8 @@ import 'package:flutter/material.dart';
 /// 饼图最多展示的分类数；其余合并为「其他」。
 const int expensePieTopCount = 5;
 
-const Color _pieLabelDark = Color(0xFF1B1F1C);
+/// 与主题墨色 `BeeTheme.ink` 保持一致。
+const Color _pieLabelDark = Color(0xFF132220);
 
 /// 根据扇区底色选择白/深色文字，保证百分比标签可读。
 Color readablePieLabelColor(Color background) {

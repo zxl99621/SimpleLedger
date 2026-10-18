@@ -88,7 +88,6 @@ Future<void> _persistAndPushPrimary(
       final repository = ref.read(repositoryProvider);
       final currentLedgerId = ref.read(currentLedgerIdProvider);
       final redForIncome = ref.read(incomeExpenseColorSchemeProvider);
-      final baseCurrency = ref.read(baseCurrencyProvider);
       // 没有 BuildContext,靠 languageProvider 还原当前 App 语言(见
       // widget_manager.dart resolveWidgetLocalizations 文档)。
       final locale = ref.read(languageProvider);
@@ -99,7 +98,6 @@ Future<void> _persistAndPushPrimary(
         next,
         explicitLocale: locale,
         redForIncome: redForIncome,
-        baseCurrency: baseCurrency,
       );
     } catch (e) {
       // Silently fail
@@ -538,7 +536,6 @@ final incomeExpenseColorSchemeInitProvider = FutureProvider<void>((ref) async {
       final repository = ref.read(repositoryProvider);
       final currentLedgerId = ref.read(currentLedgerIdProvider);
       final primaryColor = ref.read(primaryColorProvider);
-      final baseCurrency = ref.read(baseCurrencyProvider);
       // 没有 BuildContext,靠 languageProvider 还原当前 App 语言(见
       // widget_manager.dart resolveWidgetLocalizations 文档)。
       final locale = ref.read(languageProvider);
@@ -549,7 +546,6 @@ final incomeExpenseColorSchemeInitProvider = FutureProvider<void>((ref) async {
         primaryColor,
         explicitLocale: locale,
         redForIncome: next,
-        baseCurrency: baseCurrency,
       );
     } catch (e) {
       // Silently fail

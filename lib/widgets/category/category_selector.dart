@@ -11,6 +11,7 @@ import '../../utils/shared_ledger_picker_filter.dart';
 import '../../styles/tokens.dart';
 import '../../widgets/biz/app_empty.dart';
 import '../category_icon.dart';
+import 'category_icon_button.dart';
 import '../../pages/category/category_manage_page.dart';
 import '../../pages/category/category_edit_page.dart';
 
@@ -465,65 +466,62 @@ class _CategoryItem extends StatelessWidget {
     final fontSize = isSubCategory ? 11.0 : 12.0;
     final primaryColor = Theme.of(context).colorScheme.primary;
 
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(48),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Container(
-                width: iconSize,
-                height: iconSize,
-                decoration: BoxDecoration(
-                  color: selected
-                      ? primaryColor.withValues(alpha: 0.25)
-                      : isSubCategory
-                          ? BeeTokens.surfaceCategoryIconLight(context)
-                          : BeeTokens.surfaceCategoryIcon(context),
-                  shape: BoxShape.circle,
-                ),
-                child: _buildIcon(
-                  context,
-                  isSubCategory ? 20 : 24,
-                  selected ? primaryColor : BeeTokens.iconCategory(context),
-                ),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Stack(
+          clipBehavior: Clip.none,
+          children: [
+            CategoryIconButton(
+              size: iconSize,
+              selected: selected,
+              primaryColor: primaryColor,
+              backgroundColor: isSubCategory
+                  ? BeeTokens.surfaceCategoryIconLight(context)
+                  : BeeTokens.surfaceCategoryIcon(context),
+              onTap: onTap,
+              child: _buildIcon(
+                context,
+                isSubCategory ? 20 : 24,
+                selected ? primaryColor : BeeTokens.iconCategory(context),
               ),
-              // 有子分类时在图标右下角显示三个点（完全分开，不重叠）
-              if (hasChildren && !isSubCategory)
-                Positioned(
-                  right: -6,
-                  bottom: -6,
-                  child: Container(
-                    width: 20,
-                    height: 20,
-                    decoration: BoxDecoration(
-                      color: selected
-                          ? primaryColor.withValues(alpha: 0.25)
-                          : BeeTokens.surfaceCategoryIcon(context),
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: BeeTokens.surface(context),
-                        width: 2,
-                      ),
+            ),
+            // 有子分类时在图标右下角显示三个点（完全分开，不重叠）
+            if (hasChildren && !isSubCategory)
+              Positioned(
+                right: -6,
+                bottom: -6,
+                child: Container(
+                  width: 20,
+                  height: 20,
+                  decoration: BoxDecoration(
+                    color: selected
+                        ? primaryColor.withValues(alpha: 0.25)
+                        : BeeTokens.surfaceCategoryIcon(context),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: BeeTokens.surface(context),
+                      width: 2,
                     ),
-                    child: Center(
-                      child: Icon(
-                        Icons.more_horiz,
-                        size: 14,
-                        color: selected
-                            ? primaryColor
-                            : BeeTokens.iconCategory(context),
-                      ),
+                  ),
+                  child: Center(
+                    child: Icon(
+                      Icons.more_horiz,
+                      size: 14,
+                      color: selected
+                          ? primaryColor
+                          : BeeTokens.iconCategory(context),
                     ),
                   ),
                 ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onTap,
+          child: Text(
             CategoryUtils.getDisplayName(category.name, context),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
@@ -534,8 +532,8 @@ class _CategoryItem extends StatelessWidget {
                       : BeeTokens.textPrimary(context),
                 ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

@@ -179,7 +179,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aboutChangelog => 'Changelog';
 
   @override
-  String get appTitle => 'Bee Accounting';
+  String get appTitle => 'SimpleLedger';
 
   @override
   String get tabHome => 'Home';

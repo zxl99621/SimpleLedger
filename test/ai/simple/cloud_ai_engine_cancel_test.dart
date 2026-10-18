@@ -38,7 +38,7 @@ void main() {
         'data: {"choices":[{"delta":{"content":"a"}}]}\n\n'));
     await Future<void>.delayed(const Duration(milliseconds: 20));
 
-    engine.cancel();
+    await engine.cancel();
     controller.add(utf8.encode(
         'data: {"choices":[{"delta":{"content":"b"}}]}\n\n'));
     await Future<void>.delayed(const Duration(milliseconds: 20));

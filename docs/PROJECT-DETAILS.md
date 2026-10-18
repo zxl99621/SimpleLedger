@@ -1,6 +1,6 @@
 # SimpleLedger 项目说明
 
-- 稳定版本：1.1.3（versionCode 6）
+- 稳定版本：1.1.5（versionCode 8）
 - 平台：Android 11+（API 30）
 - 应用 ID：`com.simpleledger.app`
 - 技术栈：Flutter 3.47.7 + Riverpod + Drift（SQLite）
@@ -34,8 +34,10 @@ SimpleLedger 是面向个人使用的极简记账应用。当前版本只保留�
 
 - 云端：OpenAI 兼容接口（DeepSeek、通义、智谱、Moonshot、OpenAI 等）
 - 本地：Qwen3 GGUF，支持 ModelScope / Hugging Face / 自定义 URL 下载
-- 月度总结、消费洞察、账单问答
-- 请求可停止；云端停止时会关闭 HTTP 连接
+- 本地推理当前使用 CPU；Vulkan GPU 后端为实验能力，默认关闭（部分 Mali 驱动在加载模型时会原生崩溃，稳定构建不包含该后端）
+- 月度总结、消费洞察、账单问答；回答逐字流式上屏
+- AI 页支持一句话记账意图分流，解析结果需用户确认后才写入账本
+- 请求可停止；云端停止时会关闭 HTTP 连接，本地停止会等待原生生成循环退出
 - API Key 使用 Android Keystore 加密存储
 - 图片 OCR 始终使用云端视觉模型，与文字推理模式无关
 
@@ -176,7 +178,7 @@ keyPassword=***
 4. 使用正式 key 重新签名
 5. `apksigner verify --print-certs` 校验
 
-最终 arm64 APK 约 19 MB，`aapt` 中 native-code 只包含 `arm64-v8a`。
+最终 arm64 APK 约 20 MB（CPU-only，不含 `libggml-vulkan.so`），`aapt` 中 native-code 只包含 `arm64-v8a`。
 
 ### 3.4 持续集成与发布
 

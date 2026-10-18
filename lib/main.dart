@@ -112,7 +112,6 @@ class _WidgetUpdateObserver extends ProviderObserver {
       final ledgerId = container.read(currentLedgerIdProvider);
       final primaryColor = container.read(primaryColorProvider);
       final redForIncome = container.read(incomeExpenseColorSchemeProvider);
-      final baseCurrency = container.read(baseCurrencyProvider);
       // 没有 BuildContext,靠 languageProvider 还原当前 App 语言(见
       // widget_manager.dart resolveWidgetLocalizations 文档)。
       final locale = container.read(languageProvider);
@@ -124,9 +123,8 @@ class _WidgetUpdateObserver extends ProviderObserver {
         primaryColor,
         explicitLocale: locale,
         redForIncome: redForIncome,
-        baseCurrency: baseCurrency,
-        // 预热:启动 / 切账本时把全部类型×尺寸的图渲染齐,这样用户随后往桌面
-        // 添加任何一种小组件都立刻有图可显,不用等下一次 App 内触发渲染
+        // 预热:启动 / 切账本时把目录内的组件图渲染齐,这样用户随后往桌面
+        // 添加小组件时立刻有图可显,不用等下一次 App 内触发渲染
         // (「添加小组件后得等一会」的修复;高频数据变化触发仍只渲已安装)。
         warmUpAllSpecs: true,
       );

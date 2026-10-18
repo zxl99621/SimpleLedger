@@ -386,7 +386,7 @@ abstract class AppLocalizations {
   /// No description provided for @appTitle.
   ///
   /// In zh, this message translates to:
-  /// **'蜜蜂记账'**
+  /// **'极简记账'**
   String get appTitle;
 
   /// No description provided for @tabHome.

@@ -11,7 +11,7 @@ A local-first, privacy-first personal finance app for Android, derived from [Bee
 
 - GitHub：<https://github.com/zxl99621/SimpleLedger>
 - Gitee：<https://gitee.com/zxl996/simple-ledger>
-- 当前稳定版：**1.1.3**（Android 11+ / API 30）
+- 当前稳定版：**1.1.5**（Android 11+ / API 30）
 
 ---
 
@@ -28,14 +28,14 @@ A local-first, privacy-first personal finance app for Android, derived from [Bee
 
 | 文件 | 适用设备 | 说明 |
 |------|----------|------|
-| `SimpleLedger-<版本>-release.apk` | arm64-v8a，Android 11+ | 推荐；约 19 MB，支持本地 GGUF AI |
+| `SimpleLedger-<版本>-release.apk` | arm64-v8a，Android 11+ | 推荐；约 20 MB，支持本地 GGUF AI（CPU） |
 | `SimpleLedger-<版本>-armeabi-v7a.apk` | 32 位，Android 11+ | 约 17 MB；云端 AI 可用，本地 GGUF 不可用 |
 | `SimpleLedger-<版本>-source.zip` | — | 完整源码，可从零构建 |
 
 安装方式：下载 APK 后直接打开，或：
 
 ```bash
-adb install -r SimpleLedger-1.1.3-release.apk
+adb install -r SimpleLedger-1.1.5-release.apk
 ```
 
 应用升级必须使用同一签名密钥；正式包证书 SHA-256 为
@@ -47,7 +47,7 @@ adb install -r SimpleLedger-1.1.3-release.apk
 |------|------|
 | 记账 | 收入 / 支出；金额、分类、日期；备注、图片附件、多标签；一句话 AI 解析；图片 OCR 回填 |
 | 统计 | 本周 / 本月 / 自定义区间；本期收支、环比、同比；支出 Top5 饼图、近 6 个月柱状图、分类排行、本期明细 |
-| AI | 云端 OpenAI 兼容接口 / 本地 Qwen3 GGUF 双模式；月度总结、消费洞察、账单问答；请求可停止 |
+| AI | 云端 OpenAI 兼容接口 / 本地 Qwen3 GGUF 双模式；本地推理为 CPU（Vulkan 实验后端默认关闭）；月度总结、消费洞察、账单问答；流式回答；一句话记账需确认后写入；请求可停止 |
 | 数据 | 完整备份（数据库 + 图片）或仅数据库备份；可选密码加密；原子恢复与完整性校验；CSV 导入导出；清空账单 |
 | 安全 | 应用锁：PIN + 生物识别 + 自动锁定超时 |
 | 桌面 | 4×2「本月支出」小组件；长按图标拍照 / 相册快捷记账 |
@@ -157,7 +157,7 @@ GitHub Actions：
 本地发布脚本：
 
 ```bash
-scripts/publish_release.sh 1.1.3
+scripts/publish_release.sh 1.1.5
 ```
 
 需要 GitHub token（`repo` 权限）与 Gitee token（`projects` 权限），默认从
@@ -175,7 +175,7 @@ scripts/publish_release.sh 1.1.3
 | Qwen3 1.7B | Q8_0 | 约 1.75 GB | 总结与问答 |
 | Qwen3 4B | Q4_K_M | 约 2.38 GB | 高质量洞察 |
 
-模型下载源支持 ModelScope / Hugging Face / 自定义 URL，保存在 App 私有目录，不打包进 APK。本地推理仅支持 arm64 设备。
+模型下载源支持 ModelScope / Hugging Face / 自定义 URL，保存在 App 私有目录，不打包进 APK。本地推理仅支持 arm64 设备，当前稳定构建使用 CPU；Vulkan GPU 后端作为实验能力默认关闭（部分 Mali 驱动会在加载模型时崩溃，稳定包不包含该后端）。
 
 **图片 OCR**：始终使用云端视觉模型，与文字推理模式无关；需要支持图片输入的模型。
 
@@ -232,7 +232,7 @@ Android 权限仅保留：`INTERNET`、`ACCESS_NETWORK_STATE`、`USE_BIOMETRIC`�
 
 Each release ships:
 
-- `SimpleLedger-<version>-release.apk` — arm64-v8a, Android 11+, ~19 MB, full features including local GGUF AI
+- `SimpleLedger-<version>-release.apk` — arm64-v8a, Android 11+, ~20 MB, full features including local GGUF AI (CPU)
 - `SimpleLedger-<version>-armeabi-v7a.apk` — 32-bit, Android 11+, ~17 MB, cloud AI only
 - `SimpleLedger-<version>-source.zip` — complete source tree
 

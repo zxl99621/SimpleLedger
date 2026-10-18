@@ -22,6 +22,7 @@ app.*.map.json
 
 # ---- Android / signing ----
 android/.gradle/
+**/.cxx/
 android/local.properties
 android/key.properties
 android/*.keystore
